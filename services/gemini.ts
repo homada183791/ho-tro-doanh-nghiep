@@ -1,11 +1,18 @@
 
 // Fix: Updated imports to match recommended @google/genai usage
-import { GoogleGenAI, GenerateContentResponse, Chat, Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
+import { createAIClient, ChatSession } from "./aiClient";
 import { BusinessInfo, ImageSettings, IndustryCode } from "../types";
 
 // Helper to get client - ALWAYS create new to ensure API key freshness if it changes (though environment usually static)
 // Fix: Correct initialization using named parameter
-const getClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getClient = () => createAIClient();
+// Riêng tạo ảnh logo (BrandStudio) vẫn dùng Gemini vì API chuẩn OpenAI dạng chat không tạo ảnh.
+const getGeminiImageClient = () => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) throw new Error("Tạo ảnh cần VITE_GEMINI_API_KEY trong file .env.local");
+  return new GoogleGenAI({ apiKey: key });
+};
 
 /**
  * Helper function to remove Vietnamese accents/diacritics.
@@ -918,7 +925,7 @@ export const generateLegalDocument = async (
   }
 
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: modelId,
       contents: { parts },
       config: {
@@ -937,7 +944,7 @@ export const generateLegalDocument = async (
 /**
  * Creates a chat session for legal advice.
  */
-export const createLegalChat = (): Chat => {
+export const createLegalChat = (): ChatSession => {
   const ai = getClient();
   return ai.chats.create({
     // Fix: Use gemini-3-pro-preview for complex chat tasks
@@ -952,7 +959,7 @@ export const createLegalChat = (): Chat => {
  * Generates brand assets (Logos/Images) using Gemini 3 Pro Image.
  */
 export const generateBrandAsset = async (settings: ImageSettings): Promise<string[]> => {
-    const ai = getClient();
+    const ai = getGeminiImageClient();
     // Fix: Use gemini-3-pro-image-preview for high quality images and 1K/2K/4K support
     const modelId = "gemini-3-pro-image-preview";
 

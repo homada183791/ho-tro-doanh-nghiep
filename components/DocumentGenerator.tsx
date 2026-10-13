@@ -874,7 +874,8 @@ const DocumentGenerator: React.FC = () => {
       }));
     } catch (error) {
       console.error(error);
-      alert("Không thể phân tích thông tin. Vui lòng kiểm tra lại văn bản đầu vào.");
+      const detail = error instanceof Error ? error.message : String(error);
+      alert("Không thể phân tích thông tin.\n\nChi tiết lỗi: " + detail.slice(0, 500));
     } finally {
       setIsAnalyzing(false);
     }

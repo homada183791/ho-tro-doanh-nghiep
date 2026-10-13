@@ -3,7 +3,7 @@ import { ChatMessage } from '../types';
 import { createLegalChat } from '../services/gemini';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { Chat } from '@google/genai';
+import type { ChatSession as Chat } from '../services/aiClient';
 
 const LegalChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
