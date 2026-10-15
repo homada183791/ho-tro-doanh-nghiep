@@ -19,40 +19,42 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { getAISettings, AISettings, AI_SETTINGS_EVENT } from "./aiSettings";
 
-const env = import.meta.env;
 /**
- * Chọn nhà cung cấp AI:
- *   VITE_AI_PROVIDER=gemini  -> gọi thẳng Google Gemini bằng VITE_GEMINI_API_KEY (giữ được Google Search, đọc PDF/ảnh)
- *   VITE_AI_PROVIDER=openai  -> dùng API chuẩn OpenAI theo VITE_AI_BASE_URL / VITE_AI_API_KEY (mặc định)
+ * Cấu hình được đọc lại MỖI LẦN GỌI từ getAISettings() (cài đặt trên web, nếu không có thì .env.local),
+ * nên đổi key / model trên web có hiệu lực ngay, không cần chạy lại npm run dev.
+ *   provider = gemini  -> gọi thẳng Google Gemini (giữ được Google Search, đọc PDF/ảnh)
+ *   provider = openai  -> dùng API chuẩn OpenAI theo baseUrl / apiKey
  */
-const PROVIDER: "gemini" | "openai" = env.VITE_AI_PROVIDER === "gemini" ? "gemini" : "openai";
-const GEMINI_KEY = String(env.VITE_GEMINI_API_KEY || "");
-const GEMINI_MODEL = env.VITE_GEMINI_MODEL ? String(env.VITE_GEMINI_MODEL) : "";
-const GEMINI_MODEL_STRONG = env.VITE_GEMINI_MODEL_STRONG ? String(env.VITE_GEMINI_MODEL_STRONG) : "";
-const BASE_URL = String(env.VITE_AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
-const API_KEY = String(env.VITE_AI_API_KEY || "");
-const WIRE: "chat" | "responses" = env.VITE_AI_WIRE_API === "responses" ? "responses" : "chat";
-const MODEL = String(env.VITE_AI_MODEL || "gpt-5.4-mini");
-const MODEL_STRONG = String(env.VITE_AI_MODEL_STRONG || MODEL);
-const REASONING = env.VITE_AI_REASONING ? String(env.VITE_AI_REASONING) : "";
-let jsonMode: "json_schema" | "json_object" =
-  env.VITE_AI_JSON_MODE === "json_object" ? "json_object" : "json_schema";
+const env = import.meta.env;
+const cfg = (): AISettings => getAISettings();
+const baseUrlOf = (s: AISettings) => (s.baseUrl.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
 
-const EXTRA_HEADERS: Record<string, string> = (() => {
-  if (!env.VITE_AI_HEADERS) return {};
+// Nếu dịch vụ không hỗ trợ json_schema thì tự chuyển sang json_object; đặt lại khi đổi cài đặt.
+let jsonFallback = false;
+try {
+  window.addEventListener(AI_SETTINGS_EVENT, () => { jsonFallback = false; });
+} catch { /* không chạy trong trình duyệt */ }
+const jsonModeOf = (s: AISettings): "json_schema" | "json_object" =>
+  jsonFallback || s.jsonMode === "json_object" ? "json_object" : "json_schema";
+
+const headersOf = (s: AISettings): Record<string, string> => {
+  if (!s.headers.trim()) return {};
   try {
-    return JSON.parse(String(env.VITE_AI_HEADERS));
+    return JSON.parse(s.headers);
   } catch {
-    console.warn("[AI] VITE_AI_HEADERS không phải JSON hợp lệ, bỏ qua.");
+    console.warn("[AI] Header bổ sung không phải JSON hợp lệ, bỏ qua.");
     return {};
   }
-})();
+};
 
 /** Các tên model Gemini cũ trong code được đổi sang model đã cấu hình. */
 const resolveModel = (geminiModel?: string): string => {
-  if (geminiModel && /pro/i.test(geminiModel)) return MODEL_STRONG;
-  return MODEL;
+  const s = cfg();
+  const model = s.model.trim() || "gpt-5.4-mini";
+  if (geminiModel && /pro/i.test(geminiModel)) return s.modelStrong.trim() || model;
+  return model;
 };
 
 type Part = { text?: string; inlineData?: { data: string; mimeType: string } };
@@ -144,7 +146,8 @@ const buildResponsesBody = (model: string, msgs: Msg[], fmt: JsonFormat) => {
       }),
     }));
   const body: any = { model, input, store: false };
-  if (REASONING) body.reasoning = { effort: REASONING };
+  const reasoning = cfg().reasoning;
+  if (reasoning) body.reasoning = { effort: reasoning };
   if (fmt?.mode === "json_schema") {
     body.text = { format: { type: "json_schema", name: "ket_qua", schema: fmt.schema, strict: false } };
   } else if (fmt?.mode === "json_object") {
@@ -165,25 +168,35 @@ const readResponses = (data: any): string => {
 
 // ---------- Gửi yêu cầu ----------
 const callAI = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> => {
-  if (!API_KEY) throw new Error("Chưa cấu hình VITE_AI_API_KEY trong file .env.local");
+  const s = cfg();
+  const API_KEY = s.apiKey.trim();
+  const BASE_URL = baseUrlOf(s);
+  const WIRE = s.wire;
+  if (!API_KEY) throw new Error("Chưa có API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
   const endpoint = WIRE === "responses" ? "/responses" : "/chat/completions";
   const body = WIRE === "responses" ? buildResponsesBody(model, msgs, fmt) : buildChatBody(model, msgs, fmt);
-  // Khi chạy npm run dev: gửi qua proxy của Vite (/ai-api) để tránh lỗi CORS
+  // Khi chạy npm run dev: gửi qua proxy của Vite (/ai-api) để tránh lỗi CORS; proxy đọc địa chỉ đích từ header.
   const url = env.DEV ? `/ai-api${endpoint}` : `${BASE_URL}${endpoint}`;
+  const devHeaders: Record<string, string> = env.DEV ? { "x-ai-target": BASE_URL } : {};
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...EXTRA_HEADERS },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...headersOf(s), ...devHeaders },
       body: JSON.stringify(body),
     });
   } catch (e) {
-    throw new Error(`Không kết nối được tới ${BASE_URL}. Kiểm tra VITE_AI_BASE_URL và mạng Internet.`);
+    throw new Error(`Không kết nối được tới ${BASE_URL}. Kiểm tra địa chỉ API trong "Cài đặt API" và mạng Internet.`);
   }
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 400);
     if (env.DEV && res.status === 404 && !detail.trim()) {
       throw new Error("Proxy /ai-api chưa hoạt động. Hãy thay file vite.config.ts mới rồi tắt (Ctrl+C) và chạy lại npm run dev.");
+    }
+    if (res.status === 401 || res.status === 403) {
+      const err: any = new Error(`API key bị từ chối (${res.status}). Kiểm tra lại key trong "Cài đặt API". Chi tiết: ${detail}`);
+      err.status = res.status;
+      throw err;
     }
     const err: any = new Error(`AI API lỗi ${res.status}: ${detail}`);
     err.status = res.status;
@@ -211,7 +224,7 @@ const generateContent = async ({ model, contents, config = {} }: { model?: strin
 
   const run = () => {
     if (!wantsJson) return callAI(resolveModel(model), msgs, null);
-    if (schema && jsonMode === "json_schema") return callAI(resolveModel(model), msgs, { mode: "json_schema", schema });
+    if (schema && jsonModeOf(cfg()) === "json_schema") return callAI(resolveModel(model), msgs, { mode: "json_schema", schema });
     const hint = schema
       ? `Chỉ trả về JSON hợp lệ theo JSON Schema sau, không kèm giải thích:\n${JSON.stringify(schema)}`
       : "Chỉ trả về JSON hợp lệ, không kèm giải thích.";
@@ -223,8 +236,8 @@ const generateContent = async ({ model, contents, config = {} }: { model?: strin
     text = await run();
   } catch (e: any) {
     // Nhiều dịch vụ trung gian chưa hỗ trợ json_schema -> tự chuyển sang json_object rồi thử lại.
-    if (wantsJson && jsonMode === "json_schema" && e.status === 400) {
-      jsonMode = "json_object";
+    if (wantsJson && jsonModeOf(cfg()) === "json_schema" && e.status === 400) {
+      jsonFallback = true;
       text = await run();
     } else throw e;
   }
@@ -259,26 +272,50 @@ const createChat = ({ model, config = {} }: { model?: string; config?: any }): C
 };
 
 // ---------- Gemini gọi trực tiếp ----------
-/** Đổi tên model khi chạy Gemini: ưu tiên model cấu hình trong .env.local, nếu không thì dùng tên trong code. */
+/** Đổi tên model khi chạy Gemini: ưu tiên model trong cài đặt, nếu không thì dùng tên trong code. */
 const resolveGeminiModel = (model?: string): string => {
+  const s = cfg();
   const isPro = !!model && /pro/i.test(model);
-  if (isPro && GEMINI_MODEL_STRONG) return GEMINI_MODEL_STRONG;
-  if (!isPro && GEMINI_MODEL) return GEMINI_MODEL;
+  if (isPro && s.geminiModelStrong.trim()) return s.geminiModelStrong.trim();
+  if (!isPro && s.geminiModel.trim()) return s.geminiModel.trim();
   if (!model) return "gemini-3-flash-preview";
   // gemini-3-pro-preview đã được thay bằng gemini-3.1-pro-preview
   if (model === "gemini-3-pro-preview") return "gemini-3.1-pro-preview";
   return model;
 };
 
+const friendlyGeminiError = (e: any): Error => {
+  const msg = String(e?.message || e);
+  if (/Failed to fetch|NetworkError|ERR_/i.test(msg)) {
+    return new Error("Không kết nối được tới Google Gemini. Kiểm tra mạng Internet (hoặc tường lửa/VPN) rồi thử lại.");
+  }
+  if (/API key not valid|API_KEY_INVALID|PERMISSION_DENIED|401|403/i.test(msg)) {
+    const err: any = new Error(`Gemini từ chối API key. Kiểm tra lại key trong "Cài đặt API". Chi tiết: ${msg.slice(0, 300)}`);
+    err.status = 401;
+    return err;
+  }
+  return e instanceof Error ? e : new Error(msg);
+};
+
+/** Client Gemini dùng chung cho cả tạo ảnh logo. */
+export const getGeminiSDK = (): GoogleGenAI => {
+  const key = cfg().geminiKey.trim();
+  if (!key) throw new Error("Chưa có Gemini API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
+  return new GoogleGenAI({ apiKey: key });
+};
+
 const createGeminiClient = () => {
-  if (!GEMINI_KEY) throw new Error("Chưa cấu hình VITE_GEMINI_API_KEY trong file .env.local");
-  const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+  const ai = getGeminiSDK();
   return {
     models: {
       generateContent: async (args: { model?: string; contents: any; config?: any }): Promise<{ text: string; candidates?: any }> => {
-        const res = await ai.models.generateContent({ ...args, model: resolveGeminiModel(args.model) });
-        if (res.usageMetadata) console.log(`[AI] Gemini token:`, res.usageMetadata);
-        return { text: res.text ?? "", candidates: res.candidates };
+        try {
+          const res = await ai.models.generateContent({ ...args, model: resolveGeminiModel(args.model) });
+          if (res.usageMetadata) console.log(`[AI] Gemini token:`, res.usageMetadata);
+          return { text: res.text ?? "", candidates: res.candidates };
+        } catch (e) {
+          throw friendlyGeminiError(e);
+        }
       },
     },
     chats: {
@@ -286,8 +323,12 @@ const createGeminiClient = () => {
         const chat = ai.chats.create({ model: resolveGeminiModel(model), config });
         return {
           async sendMessage({ message }) {
-            const res = await chat.sendMessage({ message });
-            return { text: res.text ?? "" };
+            try {
+              const res = await chat.sendMessage({ message });
+              return { text: res.text ?? "" };
+            } catch (e) {
+              throw friendlyGeminiError(e);
+            }
           },
         };
       },
@@ -296,9 +337,26 @@ const createGeminiClient = () => {
 };
 
 export const createAIClient = () =>
-  PROVIDER === "gemini"
+  cfg().provider === "gemini"
     ? createGeminiClient()
     : {
         models: { generateContent },
         chats: { create: createChat },
       };
+
+/** Gửi một câu hỏi rất ngắn để kiểm tra key / model có dùng được không. */
+export const testAIConnection = async (): Promise<{ ok: boolean; message: string }> => {
+  const s = cfg();
+  const started = Date.now();
+  try {
+    const ai = createAIClient();
+    const res = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: "Trả lời đúng một từ: OK",
+    });
+    const model = s.provider === "gemini" ? resolveGeminiModel("gemini-3-flash-preview") : resolveModel("flash");
+    return { ok: true, message: `Kết nối được (${model}, ${Date.now() - started} ms). Trả lời: "${(res.text || "").trim().slice(0, 60)}"` };
+  } catch (e: any) {
+    return { ok: false, message: String(e?.message || e) };
+  }
+};

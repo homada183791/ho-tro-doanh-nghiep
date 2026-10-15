@@ -1,12 +1,22 @@
-import React from 'react';
-import { FileText, MessageSquare, Image as ImageIcon, Scale } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FileText, MessageSquare, Image as ImageIcon, Scale, KeyRound } from 'lucide-react';
+import { getAISettings, isConfigured, maskKey, AI_SETTINGS_EVENT } from '../services/aiSettings';
 
 interface SidebarProps {
   currentView: 'documents' | 'chat' | 'brand';
   onChangeView: (view: 'documents' | 'chat' | 'brand') => void;
+  onOpenSettings: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onOpenSettings }) => {
+  const [settings, setSettings] = useState(getAISettings());
+  useEffect(() => {
+    const update = () => setSettings(getAISettings());
+    window.addEventListener(AI_SETTINGS_EVENT, update);
+    return () => window.removeEventListener(AI_SETTINGS_EVENT, update);
+  }, []);
+  const ready = isConfigured(settings);
+  const isGemini = settings.provider === 'gemini';
   const navItems = [
     { id: 'documents', label: 'Soạn Hồ Sơ', icon: FileText },
     { id: 'chat', label: 'Tư Vấn AI', icon: MessageSquare },
@@ -44,10 +54,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
       </nav>
 
       <div className="p-4 border-t border-slate-700">
-        <div className="bg-slate-800 rounded-lg p-3 text-xs text-slate-400">
-          <p className="font-semibold text-slate-200 mb-1">Phiên bản Pro</p>
-          <p>Sử dụng Gemini 2.5 & 3.0 mới nhất.</p>
-        </div>
+        <button
+          onClick={onOpenSettings}
+          className="w-full text-left bg-slate-800 hover:bg-slate-700 rounded-lg p-3 text-xs text-slate-400 transition-colors"
+          title="Đổi API key, nhà cung cấp, model"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <KeyRound className="w-4 h-4 text-slate-200" />
+            <span className="font-semibold text-slate-200 text-sm">Cài đặt API</span>
+            <span className={`ml-auto w-2 h-2 rounded-full ${ready ? 'bg-green-400' : 'bg-amber-400'}`} />
+          </div>
+          <p>{isGemini ? 'Google Gemini' : 'Chuẩn OpenAI'} · {ready ? maskKey(isGemini ? settings.geminiKey : settings.apiKey) : 'chưa có key'}</p>
+        </button>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { createLegalChat } from '../services/gemini';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatSession as Chat } from '../services/aiClient';
+import { AI_SETTINGS_EVENT } from '../services/aiSettings';
 
 const LegalChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -19,8 +20,16 @@ const LegalChat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initialize chat session on mount
-    chatSession.current = createLegalChat();
+    // Tạo phiên chat khi mở; nếu chưa có key thì để tạo lúc gửi tin nhắn đầu tiên
+    try {
+      chatSession.current = createLegalChat();
+    } catch {
+      chatSession.current = null;
+    }
+    // Đổi API key / model trong "Cài đặt API" -> tạo phiên chat mới với cấu hình mới
+    const reset = () => { chatSession.current = null; };
+    window.addEventListener(AI_SETTINGS_EVENT, reset);
+    return () => window.removeEventListener(AI_SETTINGS_EVENT, reset);
   }, []);
 
   useEffect(() => {
@@ -28,7 +37,15 @@ const LegalChat: React.FC = () => {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || !chatSession.current) return;
+    if (!input.trim()) return;
+    if (!chatSession.current) {
+      try {
+        chatSession.current = createLegalChat();
+      } catch (e: any) {
+        setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${e?.message || e}`, timestamp: new Date() }]);
+        return;
+      }
+    }
 
     const userMsg: ChatMessage = {
       role: 'user',
@@ -41,18 +58,21 @@ const LegalChat: React.FC = () => {
     setLoading(true);
 
     try {
-      const result = await chatSession.current.sendMessage({ message: userMsg.text });
+      const result = await chatSession.current!.sendMessage({ message: userMsg.text });
       const modelMsg: ChatMessage = {
         role: 'model',
         text: result.text || 'Xin lỗi, tôi không thể trả lời lúc này.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, modelMsg]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
+      const status = error?.status;
       const errorMsg: ChatMessage = {
         role: 'model',
-        text: 'Đã xảy ra lỗi kết nối. Vui lòng thử lại sau.',
+        text: status === 401 || status === 403
+          ? `⚠️ ${error.message}`
+          : 'Đã xảy ra lỗi kết nối. Vui lòng thử lại sau.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMsg]);

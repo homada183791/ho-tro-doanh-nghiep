@@ -1,18 +1,15 @@
 
 // Fix: Updated imports to match recommended @google/genai usage
 import { GoogleGenAI, Type } from "@google/genai";
-import { createAIClient, ChatSession } from "./aiClient";
+import { createAIClient, ChatSession, getGeminiSDK } from "./aiClient";
 import { BusinessInfo, ImageSettings, IndustryCode } from "../types";
 
 // Helper to get client - ALWAYS create new to ensure API key freshness if it changes (though environment usually static)
 // Fix: Correct initialization using named parameter
 const getClient = () => createAIClient();
 // Riêng tạo ảnh logo (BrandStudio) vẫn dùng Gemini vì API chuẩn OpenAI dạng chat không tạo ảnh.
-const getGeminiImageClient = () => {
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new Error("Tạo ảnh cần VITE_GEMINI_API_KEY trong file .env.local");
-  return new GoogleGenAI({ apiKey: key });
-};
+// Key lấy từ "Cài đặt API" trên web (hoặc VITE_GEMINI_API_KEY trong .env.local).
+const getGeminiImageClient = () => getGeminiSDK();
 
 /**
  * Helper function to remove Vietnamese accents/diacritics.
