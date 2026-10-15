@@ -1,15 +1,13 @@
 
 // Fix: Updated imports to match recommended @google/genai usage
 import { GoogleGenAI, Type } from "@google/genai";
-import { createAIClient, ChatSession, getGeminiSDK } from "./aiClient";
+import { createAIClient, ChatSession, generateGeminiImage } from "./aiClient";
 import { BusinessInfo, ImageSettings, IndustryCode } from "../types";
 
 // Helper to get client - ALWAYS create new to ensure API key freshness if it changes (though environment usually static)
 // Fix: Correct initialization using named parameter
 const getClient = () => createAIClient();
 // Riêng tạo ảnh logo (BrandStudio) vẫn dùng Gemini vì API chuẩn OpenAI dạng chat không tạo ảnh.
-// Key lấy từ "Cài đặt API" trên web (hoặc VITE_GEMINI_API_KEY trong .env.local).
-const getGeminiImageClient = () => getGeminiSDK();
 
 /**
  * Helper function to remove Vietnamese accents/diacritics.
@@ -78,7 +76,7 @@ export const translateBusinessName = async (vietnameseName: string): Promise<str
     return removeVietnameseTones(translated).trim().toUpperCase();
   } catch (error) {
     console.error("Translation failed", error);
-    return "";
+    throw error;
   }
 };
 
@@ -296,7 +294,7 @@ export const lookupIndustryCodes = async (mainIndustry: string, subIndustries: s
         return [];
     } catch (e) {
         console.error("Industry lookup failed", e);
-        return [];
+        throw e;
     }
 }
 
@@ -359,7 +357,7 @@ export const suggestRelatedIndustryCodes = async (currentCodes: IndustryCode[]):
         return [];
     } catch (e) {
         console.error("Suggestion lookup failed", e);
-        return [];
+        throw e;
     }
 }
 
@@ -466,7 +464,7 @@ export const updateAdministrativeDivisions = async (
     throw new Error("Empty response");
   } catch (error) {
     console.error("Address update failed", error);
-    return { detail, ward, city, updated: false };
+    throw error;
   }
 };
 
@@ -522,7 +520,7 @@ export const lookupWard = async (ward: string, city: string): Promise<{ ward: st
     throw new Error("Empty response");
   } catch (error) {
     console.error("Ward lookup failed", error);
-    return { ward, updated: false, reason: "Lỗi kết nối tra cứu." };
+    throw error;
   }
 };
 
@@ -729,7 +727,7 @@ export const extractIdCardInfo = async (
      return {};
   } catch (e) {
       console.error("ID Extraction failed", e);
-      return {};
+      throw e;
   }
 }
 
@@ -927,7 +925,6 @@ export const generateLegalDocument = async (
       contents: { parts },
       config: {
         // Fix: Added thinking budget for Gemini 3 series reasoning
-        thinkingConfig: { thinkingBudget: 1024 }
       }
     });
     // Fix: Access .text property directly
@@ -956,23 +953,22 @@ export const createLegalChat = (): ChatSession => {
  * Generates brand assets (Logos/Images) using Gemini 3 Pro Image.
  */
 export const generateBrandAsset = async (settings: ImageSettings): Promise<string[]> => {
-    const ai = getGeminiImageClient();
-    // Fix: Use gemini-3-pro-image-preview for high quality images and 1K/2K/4K support
-    const modelId = "gemini-3-pro-image-preview";
-
+    // Ưu tiên gemini-3-pro-image-preview (hỗ trợ 1K/2K/4K); nếu key không có lượt thì thử model ảnh khác.
+    // Key lấy từ "Cài đặt API" trên web (hoặc VITE_GEMINI_API_KEY trong .env.local).
     try {
-        const response = await ai.models.generateContent({
-            model: modelId,
-            contents: {
-                parts: [{ text: settings.prompt }]
-            },
-            config: {
-                imageConfig: {
-                    aspectRatio: settings.aspectRatio,
-                    imageSize: settings.size
+        const response: any = await generateGeminiImage(
+            ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"],
+            (model) => ({
+                contents: {
+                    parts: [{ text: settings.prompt }]
+                },
+                config: {
+                    imageConfig: model.startsWith("gemini-3")
+                        ? { aspectRatio: settings.aspectRatio, imageSize: settings.size }
+                        : { aspectRatio: settings.aspectRatio }
                 }
-            }
-        });
+            })
+        );
 
         const images: string[] = [];
         // Fix: Iterate through all parts to find the image part correctly

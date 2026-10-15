@@ -4,6 +4,7 @@ import DocumentGenerator from './components/DocumentGenerator';
 import LegalChat from './components/LegalChat';
 import BrandStudio from './components/BrandStudio';
 import ApiSettings from './components/ApiSettings';
+import AiWaitToast from './components/AiWaitToast';
 import { isConfigured } from './services/aiSettings';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
       </main>
 
       <ApiSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AiWaitToast />
     </div>
   );
 }

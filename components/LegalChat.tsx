@@ -67,10 +67,9 @@ const LegalChat: React.FC = () => {
       setMessages(prev => [...prev, modelMsg]);
     } catch (error: any) {
       console.error("Chat error:", error);
-      const status = error?.status;
       const errorMsg: ChatMessage = {
         role: 'model',
-        text: status === 401 || status === 403
+        text: error?.message
           ? `⚠️ ${error.message}`
           : 'Đã xảy ra lỗi kết nối. Vui lòng thử lại sau.',
         timestamp: new Date()

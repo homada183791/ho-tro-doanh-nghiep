@@ -166,8 +166,90 @@ const readResponses = (data: any): string => {
   return texts.join("");
 };
 
+// ---------- Hạn mức (429): giãn yêu cầu + tự chờ rồi gửi lại ----------
+export const AI_WAIT_EVENT = "legalbiz:ai-waiting";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const emitWait = (seconds: number, reason: "rpm" | "quota") => {
+  try {
+    window.dispatchEvent(new CustomEvent(AI_WAIT_EVENT, { detail: { seconds, reason } }));
+  } catch { /* bỏ qua */ }
+};
+
+const errText = (e: any) => String(e?.message || e);
+export const isQuotaError = (e: any) => e?.status === 429 || /RESOURCE_EXHAUSTED|"code"\s*:\s*429|quota/i.test(errText(e));
+/** Model không có hạn mức miễn phí (limit: 0) hoặc key không được dùng model này. */
+const isModelUnavailable = (e: any) => {
+  const m = errText(e);
+  return (isQuotaError(e) && /limit:\s*0\b/.test(m)) || e?.status === 404 || /NOT_FOUND|is not found|not supported for generateContent|does not have access/i.test(m);
+};
+/** Nên thử model khác: model không có lượt / không tồn tại, hoặc đã hết lượt trong ngày của riêng model đó. */
+const shouldFallback = (e: any) => {
+  const raw = { message: e?.raw || errText(e), status: e?.status };
+  return isModelUnavailable(e) || isModelUnavailable(raw) || (isQuotaError(e) && /PerDay|per day/i.test(raw.message));
+};
+const parseRetrySeconds = (msg: string): number | null => {
+  const m = msg.match(/retry in ([\d.]+)\s*s/i) || msg.match(/"retryDelay"\s*:\s*"([\d.]+)s"/i) || msg.match(/retry-after:\s*([\d.]+)/i);
+  return m ? parseFloat(m[1]) : null;
+};
+
+const quotaError = (e: any, model: string): Error => {
+  const m = errText(e);
+  let text: string;
+  if (/limit:\s*0\b/.test(m)) {
+    text = `Model ${model} không có lượt miễn phí với key này. Vào "Cài đặt API" chọn model khác (ví dụ gemini-3-flash-preview hoặc gemini-2.5-flash), hoặc bật thanh toán cho key.`;
+  } else if (/PerDay|per day/i.test(m)) {
+    text = `Đã hết lượt miễn phí trong ngày của model ${model}. Đổi sang model khác trong "Cài đặt API", bật thanh toán cho key, hoặc đợi hạn mức được làm mới.`;
+  } else {
+    text = `Vượt giới hạn số yêu cầu mỗi phút của model ${model}. Đã tự chờ và thử lại nhưng vẫn bị chặn; đợi khoảng 1 phút rồi thử lại.`;
+  }
+  const err: any = new Error(text);
+  err.status = 429;
+  err.raw = m;
+  return err;
+};
+
+// Giãn yêu cầu theo "Giới hạn yêu cầu/phút" trong cài đặt (0 = không giới hạn)
+let recentCalls: number[] = [];
+const throttle = async () => {
+  for (;;) {
+    const rpm = Math.max(0, Math.floor(Number(cfg().rpm) || 0));
+    if (!rpm) return;
+    const now = Date.now();
+    recentCalls = recentCalls.filter((t) => now - t < 60_000);
+    if (recentCalls.length < rpm) {
+      recentCalls.push(now);
+      return;
+    }
+    const wait = 60_000 - (now - recentCalls[0]) + 300;
+    emitWait(Math.ceil(wait / 1000), "rpm");
+    await sleep(wait);
+  }
+};
+
+/** Chạy một lần gọi AI; nếu bị 429 theo phút thì chờ đúng thời gian Google yêu cầu rồi gửi lại (tối đa 3 lần). */
+const withQuota = async <T>(model: string, fn: () => Promise<T>): Promise<T> => {
+  for (let attempt = 1; ; attempt++) {
+    await throttle();
+    try {
+      return await fn();
+    } catch (e: any) {
+      if (!isQuotaError(e)) throw e;
+      const m = errText(e);
+      const secs = parseRetrySeconds(m);
+      const hopeless = /limit:\s*0\b|PerDay|per day/i.test(m) || (secs !== null && secs > 90);
+      if (hopeless || attempt > 3) throw quotaError(e, model);
+      const wait = (secs ?? 15 * attempt) + 1;
+      emitWait(Math.ceil(wait), "quota");
+      await sleep(wait * 1000);
+    }
+  }
+};
+
 // ---------- Gửi yêu cầu ----------
-const callAI = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> => {
+const callAI = (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> =>
+  withQuota(model, () => callAIOnce(model, msgs, fmt));
+
+const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> => {
   const s = cfg();
   const API_KEY = s.apiKey.trim();
   const BASE_URL = baseUrlOf(s);
@@ -198,7 +280,8 @@ const callAI = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<stri
       err.status = res.status;
       throw err;
     }
-    const err: any = new Error(`AI API lỗi ${res.status}: ${detail}`);
+    const retryAfter = res.headers.get("retry-after");
+    const err: any = new Error(`AI API lỗi ${res.status}: ${detail}${retryAfter ? ` retry-after: ${retryAfter}` : ""}`);
     err.status = res.status;
     throw err;
   }
@@ -272,24 +355,30 @@ const createChat = ({ model, config = {} }: { model?: string; config?: any }): C
 };
 
 // ---------- Gemini gọi trực tiếp ----------
+const DEFAULT_FLASH = "gemini-3-flash-preview";
+const DEFAULT_PRO = "gemini-3.1-pro-preview";
+
 /** Đổi tên model khi chạy Gemini: ưu tiên model trong cài đặt, nếu không thì dùng tên trong code. */
 const resolveGeminiModel = (model?: string): string => {
   const s = cfg();
   const isPro = !!model && /pro/i.test(model);
   if (isPro && s.geminiModelStrong.trim()) return s.geminiModelStrong.trim();
   if (!isPro && s.geminiModel.trim()) return s.geminiModel.trim();
-  if (!model) return "gemini-3-flash-preview";
+  if (!model) return DEFAULT_FLASH;
   // gemini-3-pro-preview đã được thay bằng gemini-3.1-pro-preview
-  if (model === "gemini-3-pro-preview") return "gemini-3.1-pro-preview";
+  if (model === "gemini-3-pro-preview") return DEFAULT_PRO;
   return model;
 };
+/** Model dự phòng khi model mạnh không dùng được (thường do key miễn phí không có lượt cho bản Pro). */
+const geminiFallbackModel = (): string => cfg().geminiModel.trim() || DEFAULT_FLASH;
 
 const friendlyGeminiError = (e: any): Error => {
-  const msg = String(e?.message || e);
+  const msg = errText(e);
+  if (e?.status === 429 && !/RESOURCE_EXHAUSTED/.test(msg)) return e; // đã được quotaError đổi sang tiếng Việt
   if (/Failed to fetch|NetworkError|ERR_/i.test(msg)) {
     return new Error("Không kết nối được tới Google Gemini. Kiểm tra mạng Internet (hoặc tường lửa/VPN) rồi thử lại.");
   }
-  if (/API key not valid|API_KEY_INVALID|PERMISSION_DENIED|401|403/i.test(msg)) {
+  if (/API key not valid|API_KEY_INVALID|PERMISSION_DENIED|UNAUTHENTICATED/i.test(msg) || e?.status === 401 || e?.status === 403) {
     const err: any = new Error(`Gemini từ chối API key. Kiểm tra lại key trong "Cài đặt API". Chi tiết: ${msg.slice(0, 300)}`);
     err.status = 401;
     return err;
@@ -304,29 +393,86 @@ export const getGeminiSDK = (): GoogleGenAI => {
   return new GoogleGenAI({ apiKey: key });
 };
 
+/** Bỏ ```json ... ``` và lấy đúng phần JSON nếu model trả kèm chữ. */
+const extractJson = (text: string): string => {
+  const t = cleanJson(text);
+  if (/^[\[{]/.test(t)) return t;
+  const start = t.search(/[\[{]/);
+  const end = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+  return start >= 0 && end > start ? t.slice(start, end + 1) : t;
+};
+
+/**
+ * Gemini 2.x không cho dùng Google Search cùng lúc với JSON có schema.
+ * Với các model đó: bỏ schema, yêu cầu trả JSON bằng lời, rồi tự lọc lấy JSON.
+ */
+const adaptConfigForModel = (model: string, config: any = {}) => {
+  const wantsJson = config.responseMimeType === "application/json";
+  const hasTools = Array.isArray(config.tools) && config.tools.length > 0;
+  if (!(wantsJson && hasTools) || /gemini-3/i.test(model)) return { config, wantsJson };
+  const { responseMimeType, responseSchema, ...rest } = config;
+  const hint = responseSchema
+    ? `\n\nChỉ trả về JSON hợp lệ (không giải thích, không markdown) theo cấu trúc: ${JSON.stringify(toJsonSchema(responseSchema))}`
+    : "\n\nChỉ trả về JSON hợp lệ, không giải thích, không markdown.";
+  return { config: { ...rest, systemInstruction: `${rest.systemInstruction || ""}${hint}`.trim() }, wantsJson };
+};
+
 const createGeminiClient = () => {
   const ai = getGeminiSDK();
+
+  const runOnce = async (model: string, args: { contents: any; config?: any }) => {
+    const { config, wantsJson } = adaptConfigForModel(model, args.config);
+    const res = await withQuota(model, () => ai.models.generateContent({ ...args, config, model }));
+    if (res.usageMetadata) console.log(`[AI] ${model} token:`, res.usageMetadata);
+    let text = res.text ?? "";
+    if (wantsJson && text) text = extractJson(text);
+    return { text, candidates: res.candidates };
+  };
+
   return {
     models: {
       generateContent: async (args: { model?: string; contents: any; config?: any }): Promise<{ text: string; candidates?: any }> => {
+        const model = resolveGeminiModel(args.model);
         try {
-          const res = await ai.models.generateContent({ ...args, model: resolveGeminiModel(args.model) });
-          if (res.usageMetadata) console.log(`[AI] Gemini token:`, res.usageMetadata);
-          return { text: res.text ?? "", candidates: res.candidates };
-        } catch (e) {
+          return await runOnce(model, args);
+        } catch (e: any) {
+          // Model mạnh không dùng được với key này -> tự chuyển sang model thường
+          const fallback = geminiFallbackModel();
+          if (fallback !== model && shouldFallback(e)) {
+            console.warn(`[AI] ${model} không dùng được, chuyển sang ${fallback}.`, e);
+            try {
+              return await runOnce(fallback, args);
+            } catch (e2) {
+              throw friendlyGeminiError(e2);
+            }
+          }
           throw friendlyGeminiError(e);
         }
       },
     },
     chats: {
       create: ({ model, config = {} }: { model?: string; config?: any }): ChatSession => {
-        const chat = ai.chats.create({ model: resolveGeminiModel(model), config });
+        let current = resolveGeminiModel(model);
+        let chat = ai.chats.create({ model: current, config });
         return {
           async sendMessage({ message }) {
             try {
-              const res = await chat.sendMessage({ message });
+              const res = await withQuota(current, () => chat.sendMessage({ message }));
               return { text: res.text ?? "" };
-            } catch (e) {
+            } catch (e: any) {
+              const fallback = geminiFallbackModel();
+              if (fallback !== current && shouldFallback(e)) {
+                console.warn(`[AI] ${current} không dùng được cho chat, chuyển sang ${fallback}.`);
+                const history = chat.getHistory();
+                current = fallback;
+                chat = ai.chats.create({ model: current, config, history });
+                try {
+                  const res = await withQuota(current, () => chat.sendMessage({ message }));
+                  return { text: res.text ?? "" };
+                } catch (e2) {
+                  throw friendlyGeminiError(e2);
+                }
+              }
               throw friendlyGeminiError(e);
             }
           },
@@ -334,6 +480,32 @@ const createGeminiClient = () => {
       },
     },
   };
+};
+
+/** Tạo ảnh bằng Gemini có chờ/thử lại khi bị giới hạn; tự đổi sang model ảnh khác nếu model chính không có lượt. */
+export const generateGeminiImage = async (models: string[], build: (model: string) => any) => {
+  const ai = getGeminiSDK();
+  let lastErr: any;
+  for (const model of models) {
+    try {
+      return await withQuota(model, () => ai.models.generateContent({ ...build(model), model }));
+    } catch (e: any) {
+      lastErr = e;
+      if (!shouldFallback(e)) break;
+      console.warn(`[AI] Model ảnh ${model} không dùng được, thử model khác.`);
+    }
+  }
+  const err = friendlyGeminiError(lastErr);
+  if (isModelUnavailable(lastErr) || /limit:\s*0/.test(String(lastErr?.raw || ""))) {
+    err.message = "Tạo ảnh bằng Gemini cần key đã bật thanh toán (gói miễn phí thường không có lượt tạo ảnh). " + err.message;
+  }
+  throw err;
+};
+
+/** Lấy nội dung lỗi dễ đọc để hiện cho người dùng. */
+export const aiErrorMessage = (e: any): string => {
+  const m = errText(e);
+  return m.length > 400 ? m.slice(0, 400) + "…" : m;
 };
 
 export const createAIClient = () =>
@@ -344,19 +516,34 @@ export const createAIClient = () =>
         chats: { create: createChat },
       };
 
-/** Gửi một câu hỏi rất ngắn để kiểm tra key / model có dùng được không. */
+/** Gửi một câu hỏi rất ngắn để kiểm tra key / model có dùng được không (thử cả model thường và model mạnh). */
 export const testAIConnection = async (): Promise<{ ok: boolean; message: string }> => {
   const s = cfg();
-  const started = Date.now();
-  try {
-    const ai = createAIClient();
-    const res = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: "Trả lời đúng một từ: OK",
-    });
-    const model = s.provider === "gemini" ? resolveGeminiModel("gemini-3-flash-preview") : resolveModel("flash");
-    return { ok: true, message: `Kết nối được (${model}, ${Date.now() - started} ms). Trả lời: "${(res.text || "").trim().slice(0, 60)}"` };
-  } catch (e: any) {
-    return { ok: false, message: String(e?.message || e) };
+  const isGemini = s.provider === "gemini";
+  const check = async (codeModel: string) => {
+    const started = Date.now();
+    const name = isGemini ? resolveGeminiModel(codeModel) : resolveModel(codeModel);
+    try {
+      const ai = isGemini ? getGeminiSDK() : null;
+      if (ai) {
+        await withQuota(name, () => ai.models.generateContent({ model: name, contents: "Trả lời đúng một từ: OK" }));
+      } else {
+        await createAIClient().models.generateContent({ model: codeModel, contents: "Trả lời đúng một từ: OK" });
+      }
+      return `✓ ${name} (${Date.now() - started} ms)`;
+    } catch (e: any) {
+      const err = isGemini ? friendlyGeminiError(isQuotaError(e) && e?.status !== 429 ? quotaError(e, name) : e) : e;
+      return `✗ ${name}: ${aiErrorMessage(err)}`;
+    }
+  };
+  const flash = await check("gemini-3-flash-preview");
+  if (flash.startsWith("✗")) return { ok: false, message: flash };
+  const pro = await check("gemini-3.1-pro-preview");
+  if (pro.startsWith("✗")) {
+    return {
+      ok: true,
+      message: `${flash}\n${pro}\n→ Các tính năng dùng model mạnh (tra mã ngành, tư vấn AI) sẽ tự chuyển sang model thường.`,
+    };
   }
+  return { ok: true, message: `${flash}\n${pro}` };
 };

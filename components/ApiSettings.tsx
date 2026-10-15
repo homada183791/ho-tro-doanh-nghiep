@@ -207,13 +207,22 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="g-model" className={labelCls}>Model thường</label>
-                <input id="g-model" className={inputCls} value={s.geminiModel} onChange={(e) => set('geminiModel', e.target.value)} placeholder="gemini-3-flash-preview" />
+                <input id="g-model" list="gemini-models" className={inputCls} value={s.geminiModel} onChange={(e) => set('geminiModel', e.target.value)} placeholder="gemini-3-flash-preview" />
               </div>
               <div>
                 <label htmlFor="g-model-strong" className={labelCls}>Model mạnh</label>
-                <input id="g-model-strong" className={inputCls} value={s.geminiModelStrong} onChange={(e) => set('geminiModelStrong', e.target.value)} placeholder="gemini-3.1-pro-preview" />
+                <input id="g-model-strong" list="gemini-models" className={inputCls} value={s.geminiModelStrong} onChange={(e) => set('geminiModelStrong', e.target.value)} placeholder="gemini-3.1-pro-preview" />
               </div>
-              <p className={`${hintCls} col-span-2 -mt-1`}>Để trống thì dùng model mặc định trong code.</p>
+              <p className={`${hintCls} col-span-2 -mt-1`}>
+                Để trống thì dùng model mặc định trong code. Nếu model mạnh không có lượt với key của bạn, app tự chuyển sang model thường.
+              </p>
+              <datalist id="gemini-models">
+                <option value="gemini-3-flash-preview" />
+                <option value="gemini-3.1-pro-preview" />
+                <option value="gemini-2.5-flash" />
+                <option value="gemini-2.5-flash-lite" />
+                <option value="gemini-2.5-pro" />
+              </datalist>
             </div>
           ) : (
             <>
@@ -272,6 +281,29 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
             </>
           )}
 
+          <div>
+            <label htmlFor="rpm" className={labelCls}>Giới hạn yêu cầu/phút</label>
+            <div className="flex items-center gap-2">
+              <input
+                id="rpm"
+                type="number"
+                min={0}
+                max={1000}
+                className={`${inputCls} w-28`}
+                value={s.rpm || 0}
+                onChange={(e) => set('rpm', Math.max(0, Number(e.target.value) || 0))}
+              />
+              {isGemini && s.rpm !== 5 && (
+                <button type="button" onClick={() => set('rpm', 5)} className="text-xs text-blue-600 hover:underline">
+                  Đặt 5 (key miễn phí)
+                </button>
+              )}
+            </div>
+            <p className={hintCls}>
+              0 = không giới hạn. Đặt giới hạn để app tự giãn các yêu cầu, tránh lỗi 429. Dù vậy khi bị 429, app vẫn tự chờ rồi gửi lại.
+            </p>
+          </div>
+
           {error && (
             <div className="flex gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -281,7 +313,7 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
           {result && (
             <div className={`flex gap-2 p-3 rounded-lg text-sm break-words ${result.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>
               {result.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />}
-              <span className="min-w-0">{result.message}</span>
+              <span className="min-w-0 whitespace-pre-line">{result.message}</span>
             </div>
           )}
           {saved && !result && !testing && (

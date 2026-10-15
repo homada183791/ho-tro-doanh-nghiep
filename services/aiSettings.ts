@@ -22,6 +22,8 @@ export interface AISettings {
   reasoning: "" | "low" | "medium" | "high";
   jsonMode: "json_schema" | "json_object";
   headers: string; // JSON
+  // Số yêu cầu tối đa mỗi phút (0 = không giới hạn). Key Gemini miễn phí nên đặt khoảng 5.
+  rpm: number;
 }
 
 const STORAGE_KEY = "legalbiz.aiSettings.v1";
@@ -47,6 +49,7 @@ export const envDefaults = (): AISettings => ({
   reasoning: (["low", "medium", "high"].includes(String(env.VITE_AI_REASONING)) ? env.VITE_AI_REASONING : "") as AISettings["reasoning"],
   jsonMode: env.VITE_AI_JSON_MODE === "json_object" ? "json_object" : "json_schema",
   headers: env.VITE_AI_HEADERS ? String(env.VITE_AI_HEADERS).replace(/^'|'$/g, "") : "",
+  rpm: Math.max(0, Number(env.VITE_AI_RPM) || 0),
 });
 
 const readStored = (): Partial<AISettings> | null => {

@@ -2,6 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { BusinessInfo } from '../types';
 import { analyzeBusinessInput, extractIdCardInfo, updateAdministrativeDivisions, lookupIndustryCodes, suggestRelatedIndustryCodes, translateBusinessName, lookupWard } from '../services/gemini';
+import { aiErrorMessage } from '../services/aiClient';
+
+/** Báo lỗi kèm lý do thật (hết lượt, sai key, mất mạng...) thay vì câu chung chung. */
+const showAiError = (title: string, e: unknown) => {
+  console.error(title, e);
+  alert(`${title}\n\nLý do: ${aiErrorMessage(e)}`);
+};
 import { Upload, FileType, CheckCircle, Loader2, Download, Copy, FileText, Sparkles, ArrowLeft, PlusCircle, FilePenLine, Calendar, User, Users, PieChart, Briefcase, Store, IdCard, MapPin, Building2, UserCircle2, RefreshCw, Search, BookOpen, Globe, Mail, Phone, Landmark, Keyboard, Image as ImageIcon, ScanLine, Link, FileSpreadsheet, ExternalLink, Receipt, Files, Crown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import * as XLSX from 'xlsx';
@@ -283,7 +290,7 @@ const DocumentGenerator: React.FC = () => {
         setInfo(prev => ({ ...prev, nameEn: translated }));
       }
     } catch (e) {
-      alert("Dịch tự động thất bại.");
+      showAiError("Dịch tự động thất bại.", e);
     } finally {
       setIsTranslating(false);
     }
@@ -428,7 +435,7 @@ const DocumentGenerator: React.FC = () => {
                         return { ...current, ...updates };
                     });
                 }).catch(err => {
-                    console.error("Failed to extract ID info", err);
+                    showAiError("Không tự đọc được thông tin từ ảnh giấy tờ. Bạn có thể bấm trích xuất lại sau.", err);
                 }).finally(() => {
                     setExtractingId(prevExtract => ({ ...prevExtract, [extractFieldKey]: false }));
                 });
@@ -531,8 +538,7 @@ const DocumentGenerator: React.FC = () => {
               return { ...current, ...updates };
           });
       } catch (e) {
-          console.error("Manual extraction failed", e);
-          alert("Không thể trích xuất thông tin. Vui lòng thử lại.");
+          showAiError("Không thể trích xuất thông tin từ giấy tờ.", e);
       } finally {
           setExtractingId(prev => ({ ...prev, [target]: false }));
       }
@@ -582,8 +588,7 @@ const DocumentGenerator: React.FC = () => {
             alert("Thông tin Phường/Xã hiện tại đã chính xác hoặc không có thay đổi sáp nhập.");
         }
     } catch (e) {
-        console.error(e);
-        alert("Có lỗi khi tra cứu đơn vị hành chính.");
+        showAiError("Có lỗi khi tra cứu đơn vị hành chính.", e);
     } finally {
         setLookingUpWard(prev => ({ ...prev, [fieldPrefix]: false }));
     }
@@ -783,8 +788,7 @@ const DocumentGenerator: React.FC = () => {
              alert("Địa chỉ không thay đổi so với quy hoạch mới.");
         }
     } catch (e) {
-        console.error(e);
-        alert("Có lỗi khi kiểm tra địa chỉ.");
+        showAiError("Có lỗi khi kiểm tra địa chỉ.", e);
     } finally {
         setUpdatingAddress(prev => ({ ...prev, [fieldPrefix]: false }));
     }
@@ -800,7 +804,7 @@ const DocumentGenerator: React.FC = () => {
          const codes = await lookupIndustryCodes(info.industry, info.subIndustries);
          setInfo(prev => ({ ...prev, industryCodes: codes }));
      } catch (e) {
-         alert("Có lỗi khi tra cứu mã ngành.");
+         showAiError("Có lỗi khi tra cứu mã ngành.", e);
      } finally {
          setIsLookingUpCodes(false);
      }
@@ -824,7 +828,7 @@ const DocumentGenerator: React.FC = () => {
               alert("Không tìm thấy thêm ngành nghề liên quan.");
           }
       } catch (e) {
-          alert("Có lỗi khi gợi ý mã ngành liên quan.");
+          showAiError("Có lỗi khi gợi ý mã ngành liên quan.", e);
       } finally {
           setIsSuggestingCodes(false);
       }
@@ -873,9 +877,7 @@ const DocumentGenerator: React.FC = () => {
         capitalInWords: analyzedInfo.capitalInWords || prev.capitalInWords
       }));
     } catch (error) {
-      console.error(error);
-      const detail = error instanceof Error ? error.message : String(error);
-      alert("Không thể phân tích thông tin.\n\nChi tiết lỗi: " + detail.slice(0, 500));
+      showAiError("Không thể phân tích thông tin.", error);
     } finally {
       setIsAnalyzing(false);
     }

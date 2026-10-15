@@ -59,7 +59,7 @@ const BrandStudio: React.FC = () => {
          setError("Lỗi xác thực API Key. Vui lòng thử lại và chọn Key hợp lệ từ dự án có bật thanh toán.");
          setHasKey(false);
       } else {
-         setError("Có lỗi xảy ra khi tạo hình ảnh. Vui lòng đảm bảo bạn đã chọn API Key hợp lệ.");
+         setError(`Có lỗi khi tạo hình ảnh: ${err?.message || err}`);
       }
     } finally {
       setLoading(false);
