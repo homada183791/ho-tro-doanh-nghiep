@@ -102,6 +102,43 @@ const textOf = (items: Item[]) => items.map((it) => (it.kind === "text" ? it.tex
 const cleanJson = (text: string): string =>
   text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 
+/**
+ * Tìm tất cả khối JSON hoàn chỉnh trong câu trả lời (model hay trả kèm chữ, hoặc 2 khối JSON liền nhau),
+ * rồi chọn khối có nhiều nội dung nhất. Trả về chuỗi JSON hợp lệ, hoặc null nếu không có.
+ */
+const pickJson = (text: string): string | null => {
+  const t = cleanJson(text);
+  try {
+    JSON.parse(t);
+    return t;
+  } catch { /* lọc tiếp bên dưới */ }
+  const found: string[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { if (depth > 0) inStr = true; continue; }
+    if (c === "{" || c === "[") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if ((c === "}" || c === "]") && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const chunk = t.slice(start, i + 1);
+        try { JSON.parse(chunk); found.push(chunk); } catch { /* bỏ khối hỏng */ }
+        start = -1;
+      }
+    }
+  }
+  if (!found.length) return null;
+  return found.reduce((a, b) => (b.length > a.length ? b : a));
+};
+
 type JsonFormat = { mode: "json_schema"; schema: any } | { mode: "json_object" } | null;
 
 // ---------- Chat Completions ----------
@@ -290,6 +327,14 @@ const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<
   return WIRE === "responses" ? readResponses(data) : readChat(data);
 };
 
+/** Yêu cầu có kèm ảnh/PDF không. */
+const hasMedia = (contents: any) =>
+  !!contents && typeof contents === "object" && Array.isArray(contents.parts) && contents.parts.some((p: any) => p?.inlineData);
+/** Dịch vụ/model từ chối nội dung ảnh/PDF (chỉ nhận chữ). */
+const isMediaRejected = (e: any) =>
+  e?.status === 400 &&
+  /must be a string|image_url|input_image|file_data|input_file|image input|does not support image|vision|multimodal|unsupported content|content type/i.test(errText(e));
+
 const generateContent = async ({ model, contents, config = {} }: { model?: string; contents: Contents; config?: any }) => {
   const msgs: Msg[] = [];
   if (config.systemInstruction) msgs.push({ role: "system", items: [{ kind: "text", text: config.systemInstruction }] });
@@ -319,14 +364,14 @@ const generateContent = async ({ model, contents, config = {} }: { model?: strin
     text = await run();
   } catch (e: any) {
     // Nhiều dịch vụ trung gian chưa hỗ trợ json_schema -> tự chuyển sang json_object rồi thử lại.
-    if (wantsJson && jsonModeOf(cfg()) === "json_schema" && e.status === 400) {
+    if (wantsJson && jsonModeOf(cfg()) === "json_schema" && e.status === 400 && !isMediaRejected(e)) {
       jsonFallback = true;
       text = await run();
     } else throw e;
   }
 
   if (wantsJson && text) {
-    text = cleanJson(text);
+    text = pickJson(text) ?? cleanJson(text);
     if (rootIsArray) {
       try {
         const parsed = JSON.parse(text);
@@ -394,13 +439,7 @@ export const getGeminiSDK = (): GoogleGenAI => {
 };
 
 /** Bỏ ```json ... ``` và lấy đúng phần JSON nếu model trả kèm chữ. */
-const extractJson = (text: string): string => {
-  const t = cleanJson(text);
-  if (/^[\[{]/.test(t)) return t;
-  const start = t.search(/[\[{]/);
-  const end = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
-  return start >= 0 && end > start ? t.slice(start, end + 1) : t;
-};
+const extractJson = (text: string): string => pickJson(text) ?? cleanJson(text);
 
 /**
  * Gemini 2.x không cho dùng Google Search cùng lúc với JSON có schema.
@@ -508,11 +547,35 @@ export const aiErrorMessage = (e: any): string => {
   return m.length > 400 ? m.slice(0, 400) + "…" : m;
 };
 
+/**
+ * Chế độ chuẩn OpenAI: nếu yêu cầu có ảnh/PDF (đọc CCCD, giấy tờ) mà dịch vụ chỉ nhận chữ,
+ * tự chuyển yêu cầu đó sang Gemini khi đã nhập Gemini API key; nếu chưa có thì báo rõ cách khắc phục.
+ */
+const generateContentOpenAI = async (args: { model?: string; contents: any; config?: any }): Promise<{ text: string; candidates?: any }> => {
+  try {
+    return await generateContent(args);
+  } catch (e: any) {
+    if (!(hasMedia(args.contents) && isMediaRejected(e))) throw e;
+    if (cfg().geminiKey.trim()) {
+      console.warn("[AI] Dịch vụ chuẩn OpenAI không nhận ảnh/PDF, chuyển yêu cầu này sang Gemini.", e);
+      return await createGeminiClient().models.generateContent(args);
+    }
+    const err: any = new Error(
+      `Dịch vụ AI đang dùng (model ${resolveModel(args.model)}) không đọc được ảnh/PDF. ` +
+        `Vào "Cài đặt API" và chọn Google Gemini, hoặc nhập Gemini API key để app tự dùng Gemini cho phần đọc giấy tờ, ` +
+        `hoặc đổi sang model có hỗ trợ ảnh.`
+    );
+    err.status = 400;
+    err.raw = errText(e);
+    throw err;
+  }
+};
+
 export const createAIClient = () =>
   cfg().provider === "gemini"
     ? createGeminiClient()
     : {
-        models: { generateContent },
+        models: { generateContent: generateContentOpenAI },
         chats: { create: createChat },
       };
 
