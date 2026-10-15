@@ -10,6 +10,32 @@ const showAiError = (title: string, e: unknown) => {
   alert(`${title}\n\nLý do: ${aiErrorMessage(e)}`);
 };
 
+/**
+ * AI có thể viết loại hình theo nhiều cách ("TNHH MTV", "Công ty TNHH một thành viên"...).
+ * Đưa về đúng 1 trong các loại hình của app, nếu không nhận ra thì trả null (giữ loại hình đang chọn).
+ */
+const normalizeCompanyType = (t?: string): string | null => {
+  if (!t) return null;
+  const s = t.toLowerCase().normalize('NFC');
+  if (/cổ phần|co phan|\bjsc\b/.test(s)) return 'Công ty Cổ phần';
+  if (/tư nhân|tu nhan|\bdntn\b/.test(s)) return 'Doanh nghiệp tư nhân';
+  if (/hộ kinh doanh|ho kinh doanh|\bhkd\b/.test(s)) return 'Hộ kinh doanh';
+  if (/tnhh|trách nhiệm hữu hạn|trach nhiem huu han|\bllc\b/.test(s)) {
+    if (/(2|hai)\s*(tv|thành viên|thanh vien)|trở lên|tro len|nhiều thành viên/.test(s)) return 'Công ty TNHH 2 Thành viên trở lên';
+    return 'Công ty TNHH 1 Thành viên';
+  }
+  return null;
+};
+
+/** Kiểu chủ sở hữu: AI có thể trả "Cá nhân"/"Tổ chức" thay vì individual/organization. */
+const normalizeOwnerType = (t?: string): 'individual' | 'organization' | null => {
+  if (!t) return null;
+  const s = t.toLowerCase();
+  if (/organi|tổ chức|to chuc|công ty|pháp nhân/.test(s)) return 'organization';
+  if (/individual|cá nhân|ca nhan|person/.test(s)) return 'individual';
+  return null;
+};
+
 /** AI trả về nhưng không đọc được trường nào -> báo cho người dùng thay vì im lặng. */
 const warnIfEmpty = (extracted: Record<string, any>, mode: 'person' | 'organization') => {
   const keys = mode === 'person'
@@ -867,9 +893,9 @@ const DocumentGenerator: React.FC = () => {
       setInfo(prev => ({
         ...prev,
         ...analyzedInfo,
-        type: analyzedInfo.type || prev.type,
+        type: normalizeCompanyType(analyzedInfo.type) || prev.type,
         docDate: analyzedInfo.docDate || prev.docDate,
-        ownerType: analyzedInfo.ownerType || prev.ownerType,
+        ownerType: normalizeOwnerType(analyzedInfo.ownerType) || prev.ownerType,
         addressCountry: prev.addressCountry || 'Việt Nam',
         ownerAddressCountry: prev.ownerAddressCountry || 'Việt Nam',
         repAddressCountry: prev.repAddressCountry || 'Việt Nam',

@@ -155,7 +155,7 @@ export const analyzeBusinessInput = async (text: string, taskType: 'new' | 'chan
             nameAbbr: { type: Type.STRING },
             capital: { type: Type.STRING },
             capitalInWords: { type: Type.STRING, description: "Vốn điều lệ viết bằng chữ" },
-            type: { type: Type.STRING },
+            type: { type: Type.STRING, enum: ['Công ty TNHH 1 Thành viên', 'Công ty TNHH 2 Thành viên trở lên', 'Công ty Cổ phần', 'Doanh nghiệp tư nhân', 'Hộ kinh doanh'], description: "Loại hình doanh nghiệp, chọn đúng một giá trị trong danh sách" },
             
             // Company Contact
             phone: { type: Type.STRING },
