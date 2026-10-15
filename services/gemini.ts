@@ -527,10 +527,46 @@ export const lookupWard = async (ward: string, city: string): Promise<{ ward: st
 /**
  * Extracts information from ID Card images (Front and/or Back).
  */
+/** Bỏ các giá trị "rỗng giả" model hay trả (null, N/A, "không có"...) để không ghi đè dữ liệu đang có. */
+const cleanValue = (v: any): string => {
+  if (v === null || v === undefined) return "";
+  const t = String(v).trim();
+  return /^(null|undefined|n\/?a|none|-+|không có|không rõ|không xác định|chưa rõ|trống)$/i.test(t) ? "" : t;
+};
+
+/**
+ * Chuẩn hoá kết quả trích xuất: làm sạch giá trị, và với giấy tờ cá nhân thì nếu model lỡ điền vào
+ * nhóm authRep* / orgLegalRep* (hoặc dùng tên khác) thì chuyển về đúng các trường name, dob, idNumber...
+ */
+const normalizeExtracted = (raw: any, mode: 'person' | 'organization') => {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw && typeof raw === "object" ? raw : {})) out[k] = cleanValue(v);
+  if (mode !== 'person') return out as any;
+  const base = ["name", "gender", "dob", "idNumber", "idDate", "idPlace", "idDocumentType", "addressDetail", "addressWard", "addressCity", "addressCountry"];
+  const alias: Record<string, string[]> = {
+    name: ["fullName", "full_name", "hoTen"],
+    dob: ["dateOfBirth", "birthDate", "ngaySinh"],
+    idNumber: ["id", "idNo", "cccd", "number", "soGiayTo"],
+    idDate: ["issueDate", "dateOfIssue", "ngayCap"],
+    idPlace: ["issuePlace", "placeOfIssue", "noiCap"],
+    gender: ["sex", "gioiTinh"],
+  };
+  for (const key of base) {
+    if (out[key]) continue;
+    const cap = key[0].toUpperCase() + key.slice(1);
+    const candidates = [`authRep${cap}`, `orgLegalRep${cap}`, ...(alias[key] || [])];
+    const found = candidates.map((c) => out[c]).find(Boolean);
+    if (found) out[key] = found;
+  }
+  return out as any;
+};
+
 export const extractIdCardInfo = async (
   frontImage?: { base64: string, mimeType: string },
   backImage?: { base64: string, mimeType: string },
-  extraFiles?: { base64: string, mimeType: string }[]
+  extraFiles?: { base64: string, mimeType: string }[],
+  // 'person': giấy tờ của MỘT cá nhân (chủ sở hữu cá nhân / người đại diện); 'organization': hồ sơ tổ chức
+  mode: 'person' | 'organization' = 'organization'
 ): Promise<{
   name?: string;
   gender?: string;
@@ -644,22 +680,30 @@ export const extractIdCardInfo = async (
     Nếu trường nào không tìm thấy trong tài liệu, trả về chuỗi rỗng.
   `;
 
-  const parts: any[] = [{ text: prompt }];
+  const isPerson = mode === 'person';
+  const personNote = `
+    QUAN TRỌNG: Các tệp dưới đây là giấy tờ của MỘT CÁ NHÂN (mặt trước và mặt sau của cùng một thẻ/hộ chiếu).
+    Gộp thông tin của cả hai mặt và điền vào các trường: name, gender, dob, idNumber, idDocumentType, idDate, idPlace,
+    addressDetail, addressWard, addressCity, addressCountry.
+    KHÔNG dùng các trường bắt đầu bằng org, authRep, orgLegalRep (để trống các trường đó).
+    Mặt trước thường có: họ tên, số, ngày sinh, giới tính, nơi thường trú. Mặt sau thường có: ngày cấp, nơi cấp (và nơi thường trú với thẻ Căn cước mẫu mới).
+  `;
+  const parts: any[] = [{ text: isPerson ? prompt + personNote : prompt }];
   
   if (frontImage) {
       parts.push({ inlineData: { data: frontImage.base64, mimeType: frontImage.mimeType }});
-      parts.push({ text: "Tài liệu chính (Mặt trước / ĐKKD)" });
+      parts.push({ text: isPerson ? "Mặt trước giấy tờ cá nhân" : "Tài liệu chính (Mặt trước / ĐKKD)" });
   }
   if (backImage) {
       parts.push({ inlineData: { data: backImage.base64, mimeType: backImage.mimeType }});
-      parts.push({ text: "Tài liệu phụ 1 (Mặt sau / Quyết định / CCCD Auth Rep)" });
+      parts.push({ text: isPerson ? "Mặt sau giấy tờ cá nhân" : "Tài liệu phụ 1 (Mặt sau / Quyết định / CCCD Auth Rep)" });
   }
   
   // Handle extra files (Multi-upload for Auth Rep)
   if (extraFiles && extraFiles.length > 0) {
       extraFiles.forEach((file, index) => {
           parts.push({ inlineData: { data: file.base64, mimeType: file.mimeType }});
-          parts.push({ text: `Tài liệu bổ sung ${index + 2} (CCCD Auth Rep Mặt sau/Khác)` });
+          parts.push({ text: isPerson ? `Trang bổ sung ${index + 2} của giấy tờ cá nhân` : `Tài liệu bổ sung ${index + 2} (CCCD Auth Rep Mặt sau/Khác)` });
       });
   }
 
@@ -720,11 +764,10 @@ export const extractIdCardInfo = async (
         }
      });
 
-     // Fix: Access .text property directly
-     if (response.text) {
-         return JSON.parse(response.text);
-     }
-     return {};
+     if (!response.text) return {};
+     const raw = JSON.parse(response.text);
+     console.log("[AI] Kết quả trích xuất giấy tờ:", raw);
+     return normalizeExtracted(raw, mode);
   } catch (e) {
       console.error("ID Extraction failed", e);
       throw e;

@@ -9,6 +9,16 @@ const showAiError = (title: string, e: unknown) => {
   console.error(title, e);
   alert(`${title}\n\nLý do: ${aiErrorMessage(e)}`);
 };
+
+/** AI trả về nhưng không đọc được trường nào -> báo cho người dùng thay vì im lặng. */
+const warnIfEmpty = (extracted: Record<string, any>, mode: 'person' | 'organization') => {
+  const keys = mode === 'person'
+    ? ['name', 'dob', 'idNumber', 'idDate', 'idPlace']
+    : ['name', 'orgName', 'idNumber', 'orgCode', 'authRepName', 'authRepIdNumber', 'orgLegalRepName'];
+  if (!keys.some((k) => extracted?.[k])) {
+    alert('AI không đọc được thông tin nào từ ảnh. Thử ảnh rõ hơn, chụp thẳng, đủ 4 góc; hoặc đổi sang model đọc ảnh tốt hơn (ví dụ Google Gemini) trong "Cài đặt API".');
+  }
+};
 import { Upload, FileType, CheckCircle, Loader2, Download, Copy, FileText, Sparkles, ArrowLeft, PlusCircle, FilePenLine, Calendar, User, Users, PieChart, Briefcase, Store, IdCard, MapPin, Building2, UserCircle2, RefreshCw, Search, BookOpen, Globe, Mail, Phone, Landmark, Keyboard, Image as ImageIcon, ScanLine, Link, FileSpreadsheet, ExternalLink, Receipt, Files, Crown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import * as XLSX from 'xlsx';
@@ -352,7 +362,9 @@ const DocumentGenerator: React.FC = () => {
                 const back = side === 'back' ? primaryImage : updatedInfo[field]?.back;
                 const extras = updatedInfo[field]?.extras;
 
-                extractIdCardInfo(front, back, extras).then(extracted => {
+                const mode = isOwner && updatedInfo.ownerType === 'organization' ? 'organization' : 'person';
+                extractIdCardInfo(front, back, extras, mode).then(extracted => {
+                     warnIfEmpty(extracted, mode);
                      setInfo(current => {
                         let updates: any = {};
                         
@@ -458,7 +470,9 @@ const DocumentGenerator: React.FC = () => {
       setExtractingId(prev => ({ ...prev, [target]: true }));
       
       try {
-          const extracted = await extractIdCardInfo(currentImages.front, currentImages.back, currentImages.extras);
+          const mode = target === 'owner' && info.ownerType === 'organization' ? 'organization' : 'person';
+          const extracted = await extractIdCardInfo(currentImages.front, currentImages.back, currentImages.extras, mode);
+          warnIfEmpty(extracted, mode);
           setInfo(current => {
               let updates: any = {};
               
