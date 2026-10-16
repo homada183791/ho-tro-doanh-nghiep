@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, KeyRound, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, RotateCcw, Save, Zap } from 'lucide-react';
+import { X, KeyRound, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, RotateCcw, Save, Zap, Server, Lock } from 'lucide-react';
 import {
   AISettings,
   getAISettings,
@@ -7,6 +7,10 @@ import {
   resetAISettings,
   hasWebSettings,
   envDefaults,
+  getServerState,
+  isServerMode,
+  saveServerConfig,
+  resetServerConfig,
 } from '../services/aiSettings';
 import { testAIConnection } from '../services/aiClient';
 
@@ -51,9 +55,13 @@ const SecretInput: React.FC<{ value: string; onChange: (v: string) => void; plac
   );
 };
 
+/** Ở chế độ máy chủ, ô key để trống (key thật không bao giờ gửi xuống trình duyệt). */
+const editable = (x: AISettings): AISettings => (isServerMode() ? { ...x, apiKey: '', geminiKey: '' } : x);
+const isSavedCustom = () => (isServerMode() ? getServerState()?.source === 'file' : hasWebSettings());
+
 const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
-  const [s, setS] = useState<AISettings>(getAISettings());
-  const [fromWeb, setFromWeb] = useState(hasWebSettings());
+  const [s, setS] = useState<AISettings>(editable(getAISettings()));
+  const [fromWeb, setFromWeb] = useState(isSavedCustom());
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
@@ -61,8 +69,8 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
 
   useEffect(() => {
     if (open) {
-      setS(getAISettings());
-      setFromWeb(hasWebSettings());
+      setS(editable(getAISettings()));
+      setFromWeb(isSavedCustom());
       setResult(null);
       setSaved(false);
       setError(null);
@@ -77,6 +85,11 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const srv = getServerState();
+  const serverMode = !!srv;
+  const admin = !!srv?.isAdmin;
+  const readOnly = serverMode && !admin;
 
   const set = <K extends keyof AISettings>(k: K, v: AISettings[K]) => {
     setS((prev) => ({ ...prev, [k]: v }));
@@ -98,9 +111,10 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
     return null;
   };
 
-  const handleSave = () => {
+  const handleSave = async (): Promise<boolean> => {
+    if (readOnly) return true;
     const err = validate();
-    if (err) return setError(err);
+    if (err) { setError(err); return false; }
     try {
       const clean: AISettings = {
         ...s,
@@ -108,13 +122,21 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
         apiKey: s.apiKey.trim(),
         baseUrl: s.baseUrl.trim(),
       };
-      saveAISettings(clean);
-      setS(clean);
+      if (serverMode) {
+        // Lưu lên máy chủ; ô key để trống = giữ key đang có trên máy chủ
+        await saveServerConfig(clean, { apiKey: clean.apiKey || undefined, geminiKey: clean.geminiKey || undefined });
+        setS(editable(getAISettings()));
+      } else {
+        saveAISettings(clean);
+        setS(clean);
+      }
       setFromWeb(true);
       setSaved(true);
       setError(null);
+      return true;
     } catch (e: any) {
       setError(e.message);
+      return false;
     }
   };
 
@@ -123,7 +145,7 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
     if (err) return setError(err);
     setError(null);
     // Lưu trước rồi thử, để lần thử dùng đúng giá trị đang nhập
-    handleSave();
+    if (!(await handleSave())) return;
     setTesting(true);
     setResult(null);
     const r = await testAIConnection();
@@ -131,7 +153,20 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
     setTesting(false);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    if (serverMode) {
+      if (!confirm('Xoá cấu hình đã lưu trên máy chủ và quay về dùng file .env.local của máy chủ?')) return;
+      try {
+        await resetServerConfig();
+      } catch (e: any) {
+        return setError(e.message);
+      }
+      setS(editable(getAISettings()));
+      setFromWeb(false);
+      setSaved(false);
+      setResult(null);
+      return;
+    }
     if (!confirm('Xoá cài đặt đã lưu trên trình duyệt này và quay về dùng file .env.local?')) return;
     resetAISettings();
     setS(envDefaults());
@@ -155,7 +190,13 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Cài đặt API</h2>
               <p className="text-xs text-slate-500">
-                {fromWeb ? 'Đang dùng cài đặt lưu trên trình duyệt này' : 'Đang dùng giá trị trong file .env.local'}
+                {serverMode
+                  ? admin
+                    ? 'Bạn đang ở máy chủ: cấu hình dùng chung cho mọi máy'
+                    : 'Cấu hình do máy chủ quản lý'
+                  : fromWeb
+                  ? 'Đang dùng cài đặt lưu trên trình duyệt này'
+                  : 'Đang dùng giá trị trong file .env.local'}
               </p>
             </div>
           </div>
@@ -166,6 +207,40 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
 
         {/* Body */}
         <div className="px-6 py-5 space-y-5 overflow-y-auto">
+          {readOnly && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="flex gap-3">
+                <div className="p-2 h-fit bg-white text-slate-600 rounded-lg border border-slate-200">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div className="text-sm text-slate-700">
+                  <p className="font-medium text-slate-900">API key được giữ trên máy chủ</p>
+                  <p>Máy này gọi AI qua máy chủ và không nhận được key. Muốn đổi key hoặc model, hãy mở web ngay trên máy chủ.</p>
+                </div>
+              </div>
+              <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
+                <dt className="text-slate-500">Nhà cung cấp</dt>
+                <dd className="text-slate-900">{isGemini ? 'Google Gemini' : 'Chuẩn OpenAI'}</dd>
+                <dt className="text-slate-500">Model</dt>
+                <dd className="text-slate-900 font-mono text-xs pt-0.5">
+                  {isGemini ? s.geminiModel || 'mặc định' : s.model}
+                  {(isGemini ? s.geminiModelStrong : s.modelStrong) ? ` / ${isGemini ? s.geminiModelStrong : s.modelStrong}` : ''}
+                </dd>
+                <dt className="text-slate-500">Trạng thái key</dt>
+                <dd className="text-slate-900">
+                  {(isGemini ? srv?.hasGeminiKey : srv?.hasApiKey) ? 'Đã có trên máy chủ' : 'Máy chủ chưa nhập key'}
+                </dd>
+              </dl>
+            </div>
+          )}
+
+          {!readOnly && (<>
+          {serverMode && (
+            <div className="flex gap-2 p-3 rounded-lg bg-blue-50 text-blue-800 text-sm">
+              <Server className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Cấu hình và key lưu trên máy chủ (thư mục tools). Các máy khác dùng chung, không xem được key.</span>
+            </div>
+          )}
           {/* Provider */}
           <div>
             <span className={labelCls}>Nhà cung cấp</span>
@@ -194,7 +269,12 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
             <label htmlFor="gemini-key" className={labelCls}>
               Gemini API key
             </label>
-            <SecretInput id="gemini-key" value={s.geminiKey} onChange={(v) => set('geminiKey', v)} placeholder="Dán key Gemini vào đây" />
+            <SecretInput
+              id="gemini-key"
+              value={s.geminiKey}
+              onChange={(v) => set('geminiKey', v)}
+              placeholder={serverMode && srv?.hasGeminiKey ? `Đã lưu (${srv.geminiKeyHint}) – để trống nếu không đổi` : 'Dán key Gemini vào đây'}
+            />
             <p className={hintCls}>
               {isGemini ? 'Dùng cho mọi tính năng.' : 'Chỉ dùng cho phần tạo logo ở mục Thương Hiệu.'} Lấy key tại{' '}
               <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
@@ -232,7 +312,12 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
               </div>
               <div>
                 <label htmlFor="api-key" className={labelCls}>API key</label>
-                <SecretInput id="api-key" value={s.apiKey} onChange={(v) => set('apiKey', v)} placeholder="sk-…" />
+                <SecretInput
+                  id="api-key"
+                  value={s.apiKey}
+                  onChange={(v) => set('apiKey', v)}
+                  placeholder={serverMode && srv?.hasApiKey ? `Đã lưu (${srv.apiKeyHint}) – để trống nếu không đổi` : 'sk-…'}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -303,6 +388,7 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
               0 = không giới hạn. Đặt giới hạn để app tự giãn các yêu cầu, tránh lỗi 429. Dù vậy khi bị 429, app vẫn tự chờ rồi gửi lại.
             </p>
           </div>
+          </>)}
 
           {error && (
             <div className="flex gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
@@ -323,9 +409,11 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
             </div>
           )}
 
-          <p className="text-xs text-slate-500">
-            Key chỉ lưu trong trình duyệt trên máy này. Đừng lưu key trên máy dùng chung.
-          </p>
+          {!serverMode && (
+            <p className="text-xs text-slate-500">
+              Key chỉ lưu trong trình duyệt trên máy này. Đừng lưu key trên máy dùng chung.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -333,7 +421,7 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
           <button
             type="button"
             onClick={handleReset}
-            disabled={!fromWeb}
+            disabled={!fromWeb || readOnly}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 rounded-lg hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-transparent"
             title="Xoá cài đặt trên web, dùng lại .env.local"
           >
@@ -348,16 +436,16 @@ const ApiSettings: React.FC<Props> = ({ open, onClose }) => {
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 disabled:opacity-60"
             >
               {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-              Lưu & kiểm tra
+              {readOnly ? 'Kiểm tra kết nối' : 'Lưu & kiểm tra'}
             </button>
-            <button
+            {!readOnly && <button
               type="button"
               onClick={handleSave}
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
             >
               <Save className="w-4 h-4" />
               Lưu
-            </button>
+            </button>}
           </div>
         </div>
       </div>

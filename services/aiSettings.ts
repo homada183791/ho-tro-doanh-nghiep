@@ -61,8 +61,72 @@ const readStored = (): Partial<AISettings> | null => {
   }
 };
 
-/** Cấu hình đang dùng = .env.local, ghi đè bởi những gì đã lưu trên web. */
-export const getAISettings = (): AISettings => ({ ...envDefaults(), ...(readStored() || {}) });
+/* ---------- Chế độ máy chủ quản lý key ----------
+ * Khi web chạy bằng npm run dev / start-public.bat, máy chủ giữ key và cấu hình.
+ * Trình duyệt chỉ nhận cấu hình KHÔNG có key, và gọi AI qua /ai-api, /gemini-api của máy chủ.
+ */
+export interface ServerState {
+  isAdmin: boolean; // đang mở trên chính máy chủ (localhost) -> được sửa cấu hình
+  source: 'file' | 'env';
+  hasApiKey: boolean;
+  hasGeminiKey: boolean;
+  apiKeyHint?: string;
+  geminiKeyHint?: string;
+  settings: Partial<AISettings>;
+}
+let serverState: ServerState | null = null;
+/** Dấu hiệu "có key trên máy chủ" (không phải key thật). */
+export const SERVER_KEY = "(máy chủ)";
+
+/** Gọi khi khởi động app. Nếu máy chủ không hỗ trợ thì dùng chế độ cũ (key lưu trên trình duyệt). */
+export const loadServerConfig = async (): Promise<ServerState | null> => {
+  try {
+    const r = await fetch("/__ai/config", { cache: "no-store" });
+    if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw new Error("no server config");
+    serverState = await r.json();
+    // Xoá key cũ từng lưu trên trình duyệt (giờ key chỉ nằm trên máy chủ)
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* bỏ qua */ }
+  } catch {
+    serverState = null;
+  }
+  return serverState;
+};
+export const getServerState = () => serverState;
+export const isServerMode = () => serverState !== null;
+
+/** Lưu cấu hình lên máy chủ (chỉ làm được trên chính máy chủ). Key để trống = giữ key cũ. */
+export const saveServerConfig = async (settings: AISettings, keys: { apiKey?: string; geminiKey?: string }) => {
+  const { apiKey, geminiKey, ...rest } = settings;
+  const r = await fetch("/__ai/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ settings: rest, ...keys }),
+  });
+  if (!r.ok) throw new Error((await r.text()) || `Lỗi ${r.status}`);
+  await loadServerConfig();
+  notify();
+};
+
+/** Xoá cấu hình đã lưu trên máy chủ, quay về dùng .env.local của máy chủ. */
+export const resetServerConfig = async () => {
+  const r = await fetch("/__ai/config", { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.text()) || `Lỗi ${r.status}`);
+  await loadServerConfig();
+  notify();
+};
+
+/** Cấu hình đang dùng: của máy chủ (nếu có), nếu không thì .env.local + cài đặt lưu trên trình duyệt. */
+export const getAISettings = (): AISettings => {
+  if (serverState) {
+    return {
+      ...envDefaults(),
+      ...serverState.settings,
+      apiKey: serverState.hasApiKey ? SERVER_KEY : "",
+      geminiKey: serverState.hasGeminiKey ? SERVER_KEY : "",
+    } as AISettings;
+  }
+  return { ...envDefaults(), ...(readStored() || {}) };
+};
 
 /** Có đang dùng cấu hình lưu trên web không (thay vì .env.local). */
 export const hasWebSettings = (): boolean => readStored() !== null;

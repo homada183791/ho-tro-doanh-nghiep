@@ -2,87 +2,187 @@ import path from 'path';
 import http from 'http';
 import https from 'https';
 import crypto from 'crypto';
+import fs from 'fs';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
-/** Địa chỉ nội bộ (máy này, mạng LAN): không cho proxy gọi tới khi web được public. */
-const isPrivateHost = (host: string) => {
-  const h = host.toLowerCase().replace(/^\[|\]$/g, '');
-  return (
-    h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') ||
-    h === '0.0.0.0' || h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80') ||
-    /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)
-  );
+/** Yêu cầu đến từ chính máy chủ (không qua đường link công khai). */
+const isLocalRequest = (req: http.IncomingMessage) => {
+  const fromTunnel = !!(req.headers['cf-ray'] || req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']);
+  return !fromTunnel && /^(::1|127\.|::ffff:127\.)/.test(req.socket.remoteAddress || '');
 };
 
-/**
- * Proxy /ai-api cho npm run dev (tránh lỗi CORS khi gọi API chuẩn OpenAI từ trình duyệt).
- * Địa chỉ đích lấy từ header x-ai-target (do "Cài đặt API" trên web gửi kèm),
- * nếu không có thì dùng VITE_AI_BASE_URL trong .env.local.
- * Dùng http/https của Node (giống proxy mặc định của Vite) để chạy ổn định trên Windows.
- */
-const aiProxy = (fallbackBase: string): Plugin => ({
-  name: 'legalbiz-ai-proxy',
+/* ------------------------------------------------------------------
+ * Cấu hình AI phía máy chủ: key chỉ nằm ở đây, không bao giờ gửi xuống trình duyệt.
+ * Nguồn: tools/ai-config.json (lưu từ hộp thoại "Cài đặt API" trên chính máy chủ),
+ * nếu chưa có thì lấy từ .env.local (AI_* hoặc VITE_AI_*).
+ * ------------------------------------------------------------------ */
+type ServerAI = {
+  provider: 'gemini' | 'openai';
+  geminiKey: string; geminiModel: string; geminiModelStrong: string;
+  baseUrl: string; apiKey: string; wire: 'chat' | 'responses';
+  model: string; modelStrong: string; reasoning: string; jsonMode: string; headers: string; rpm: number;
+};
+const CONFIG_FILE = path.resolve('tools/ai-config.json');
+
+const configFromEnv = (env: Record<string, string>): ServerAI => {
+  const g = (k: string) => env['AI_' + k] ?? env['VITE_AI_' + k] ?? '';
+  const geminiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || '';
+  const apiKey = g('API_KEY');
+  const p = g('PROVIDER');
+  return {
+    provider: p === 'openai' || (p !== 'gemini' && apiKey && !geminiKey) ? 'openai' : 'gemini',
+    geminiKey,
+    geminiModel: env.GEMINI_MODEL || env.VITE_GEMINI_MODEL || '',
+    geminiModelStrong: env.GEMINI_MODEL_STRONG || env.VITE_GEMINI_MODEL_STRONG || '',
+    baseUrl: g('BASE_URL') || 'https://api.openai.com/v1',
+    apiKey,
+    wire: g('WIRE_API') === 'responses' ? 'responses' : 'chat',
+    model: g('MODEL') || 'gpt-5.4-mini',
+    modelStrong: g('MODEL_STRONG'),
+    reasoning: ['low', 'medium', 'high'].includes(g('REASONING')) ? g('REASONING') : '',
+    jsonMode: g('JSON_MODE') === 'json_object' ? 'json_object' : 'json_schema',
+    headers: g('HEADERS').replace(/^'|'$/g, ''),
+    rpm: Math.max(0, Number(g('RPM')) || 0),
+  };
+};
+
+const maskKey = (k: string) => (!k ? '' : k.length <= 10 ? '•'.repeat(k.length) : `${k.slice(0, 5)}…${k.slice(-4)}`);
+
+/** Gửi tiếp yêu cầu tới máy chủ AI thật (dùng http/https của Node, chạy ổn định trên Windows). */
+const forward = (req: http.IncomingMessage, res: http.ServerResponse, target: URL, headers: Record<string, string>) => {
+  headers['host'] = target.host;
+  const lib = target.protocol === 'https:' ? https : http;
+  const upstream = lib.request(target, { method: req.method, headers, timeout: 300_000 }, (up) => {
+    res.statusCode = up.statusCode || 502;
+    for (const [k, v] of Object.entries(up.headers)) {
+      if (v !== undefined && !['connection', 'transfer-encoding'].includes(k)) res.setHeader(k, v as any);
+    }
+    up.pipe(res);
+  });
+  upstream.on('timeout', () => upstream.destroy(Object.assign(new Error('Quá thời gian chờ (5 phút)'), { code: 'ETIMEDOUT' })));
+  upstream.on('error', (e: any) => {
+    console.error('[ai-proxy]', target.host, e?.code || e);
+    if (res.headersSent) return res.end();
+    res.statusCode = 502;
+    res.setHeader('content-type', 'text/plain; charset=utf-8');
+    const hint =
+      e?.code === 'ENOTFOUND' ? ' (không tìm thấy tên miền, kiểm tra Địa chỉ API hoặc mạng)'
+      : e?.code === 'ECONNREFUSED' ? ' (máy chủ từ chối kết nối)'
+      : e?.code === 'ETIMEDOUT' || e?.code === 'ECONNRESET' ? ' (mạng chậm/bị chặn, thử tắt VPN/tường lửa hoặc thử lại)'
+      : /certificate|CERT|SSL|TLS/i.test(String(e?.code || e?.message)) ? ' (lỗi chứng chỉ HTTPS, có thể do phần mềm diệt virus/proxy chặn)'
+      : '';
+    res.end(`Proxy không kết nối được tới ${target.host}: ${e?.code || ''} ${e?.message || e}${hint}`);
+  });
+  req.pipe(upstream);
+};
+
+const sendText = (res: http.ServerResponse, status: number, text: string) => {
+  res.statusCode = status;
+  res.setHeader('content-type', 'text/plain; charset=utf-8');
+  res.end(text);
+};
+const sendJson = (res: http.ServerResponse, status: number, data: unknown) => {
+  res.statusCode = status;
+  res.setHeader('content-type', 'application/json; charset=utf-8');
+  res.setHeader('cache-control', 'no-store');
+  res.end(JSON.stringify(data));
+};
+const readBody = (req: http.IncomingMessage, limit = 100_000) =>
+  new Promise<string>((resolve, reject) => {
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > limit) { reject(new Error('too large')); req.destroy(); } });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+
+const aiServer = (env: Record<string, string>): Plugin => ({
+  name: 'legalbiz-ai-server',
   configureServer(server) {
+    const load = (): { cfg: ServerAI; source: 'file' | 'env' } => {
+      const base = configFromEnv(env);
+      try {
+        if (fs.existsSync(CONFIG_FILE)) return { cfg: { ...base, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) }, source: 'file' };
+      } catch (e) {
+        console.error('[ai-config] Không đọc được tools/ai-config.json', e);
+      }
+      return { cfg: base, source: 'env' };
+    };
+
+    // Cấu hình cho trình duyệt: KHÔNG kèm key. Máy chủ (localhost) được xem thêm phần đầu/cuối key và có quyền sửa.
+    server.middlewares.use('/__ai/config', async (req, res) => {
+      const admin = isLocalRequest(req);
+      if (req.method === 'GET') {
+        const { cfg, source } = load();
+        const { apiKey, geminiKey, headers, baseUrl, ...rest } = cfg;
+        return sendJson(res, 200, {
+          isAdmin: admin,
+          source,
+          hasApiKey: !!apiKey,
+          hasGeminiKey: !!geminiKey,
+          settings: admin ? { ...rest, headers, baseUrl } : rest,
+          ...(admin ? { apiKeyHint: maskKey(apiKey), geminiKeyHint: maskKey(geminiKey) } : {}),
+        });
+      }
+      if (!admin) return sendText(res, 403, 'Chỉ có thể đổi cấu hình AI trên máy chủ (mở http://localhost trên máy đó).');
+      if (req.method === 'DELETE') {
+        try { fs.rmSync(CONFIG_FILE, { force: true }); } catch { /* bỏ qua */ }
+        return sendJson(res, 200, { ok: true });
+      }
+      if (req.method === 'POST') {
+        try {
+          const body = JSON.parse(await readBody(req));
+          const { cfg } = load();
+          const allowed: (keyof ServerAI)[] = ['provider', 'geminiModel', 'geminiModelStrong', 'baseUrl', 'wire', 'model', 'modelStrong', 'reasoning', 'jsonMode', 'headers', 'rpm'];
+          const next: ServerAI = { ...cfg };
+          for (const k of allowed) if (body.settings && k in body.settings) (next as any)[k] = body.settings[k];
+          // Key: để trống = giữ key cũ; "__clear__" = xoá
+          if (typeof body.apiKey === 'string' && body.apiKey.trim()) next.apiKey = body.apiKey.trim() === '__clear__' ? '' : body.apiKey.trim();
+          if (typeof body.geminiKey === 'string' && body.geminiKey.trim()) next.geminiKey = body.geminiKey.trim() === '__clear__' ? '' : body.geminiKey.trim();
+          if (next.headers?.trim()) JSON.parse(next.headers);
+          fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
+          fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
+          return sendJson(res, 200, { ok: true });
+        } catch (e: any) {
+          return sendText(res, 400, 'Cấu hình không hợp lệ: ' + (e?.message || e));
+        }
+      }
+      return sendText(res, 405, 'Method not allowed');
+    });
+
+    // API chuẩn OpenAI: máy chủ tự gắn địa chỉ, key và header; bỏ qua mọi key/địa chỉ do trình duyệt gửi.
     server.middlewares.use('/ai-api', (req, res) => {
-      const targetHeader = req.headers['x-ai-target'];
-      const base = String((Array.isArray(targetHeader) ? targetHeader[0] : targetHeader) || fallbackBase).replace(/\/+$/, '');
+      const { cfg } = load();
+      if (!cfg.apiKey) return sendText(res, 503, 'Máy chủ chưa có API key. Mở "Cài đặt API" trên máy chủ để nhập.');
       let target: URL;
       try {
-        target = new URL(base + (req.url || ''));
+        target = new URL(cfg.baseUrl.replace(/\/+$/, '') + (req.url || ''));
         if (!/^https?:$/.test(target.protocol)) throw new Error('bad protocol');
       } catch {
-        res.statusCode = 400;
-        res.end('Địa chỉ API không hợp lệ: ' + base);
-        return;
+        return sendText(res, 500, 'Địa chỉ API trên máy chủ không hợp lệ: ' + cfg.baseUrl);
       }
-      if (isPrivateHost(target.hostname)) {
-        res.statusCode = 403;
-        res.setHeader('content-type', 'text/plain; charset=utf-8');
-        res.end('Không cho phép gọi tới địa chỉ nội bộ: ' + target.hostname);
-        return;
+      let extra: Record<string, string> = {};
+      try { extra = cfg.headers?.trim() ? JSON.parse(cfg.headers) : {}; } catch { /* bỏ qua */ }
+      const headers: Record<string, string> = { ...extra, authorization: `Bearer ${cfg.apiKey}` };
+      for (const k of ['content-type', 'accept', 'content-length']) {
+        const v = req.headers[k];
+        if (typeof v === 'string') headers[k] = v;
       }
+      forward(req, res, target, headers);
+    });
 
-      // Chỉ chuyển tiếp các header cần thiết (Authorization, Content-Type, header x-... riêng của nhà cung cấp)
-      const headers: Record<string, string> = {};
+    // Google Gemini: thư viện trên trình duyệt gọi /gemini-api/..., máy chủ thay bằng key thật.
+    server.middlewares.use('/gemini-api', (req, res) => {
+      const { cfg } = load();
+      if (!cfg.geminiKey) return sendText(res, 503, 'Máy chủ chưa có Gemini API key. Mở "Cài đặt API" trên máy chủ để nhập.');
+      const target = new URL('https://generativelanguage.googleapis.com' + (req.url || '/'));
+      target.searchParams.delete('key');
+      const headers: Record<string, string> = { 'x-goog-api-key': cfg.geminiKey };
       for (const [k, v] of Object.entries(req.headers)) {
-        if (v === undefined) continue;
-        const key = k.toLowerCase();
-        const keep =
-          ['authorization', 'content-type', 'accept', 'content-length'].includes(key) ||
-          (key.startsWith('x-') && key !== 'x-ai-target' && !key.startsWith('x-forwarded'));
-        if (keep) headers[key] = Array.isArray(v) ? v.join(', ') : v;
+        if (typeof v !== 'string') continue;
+        if (['content-type', 'accept', 'content-length'].includes(k) || (k.startsWith('x-goog-') && k !== 'x-goog-api-key')) headers[k] = v;
       }
-      headers['host'] = target.host;
-
-      const lib = target.protocol === 'https:' ? https : http;
-      const upstream = lib.request(
-        target,
-        { method: req.method, headers, timeout: 300_000 },
-        (up) => {
-          res.statusCode = up.statusCode || 502;
-          for (const [k, v] of Object.entries(up.headers)) {
-            if (v !== undefined && !['connection', 'transfer-encoding'].includes(k)) res.setHeader(k, v as any);
-          }
-          up.pipe(res);
-        }
-      );
-      upstream.on('timeout', () => upstream.destroy(Object.assign(new Error('Quá thời gian chờ (5 phút)'), { code: 'ETIMEDOUT' })));
-      upstream.on('error', (e: any) => {
-        console.error('[ai-proxy]', target.href, e);
-        if (res.headersSent) return res.end();
-        res.statusCode = 502;
-        res.setHeader('content-type', 'text/plain; charset=utf-8');
-        const hint =
-          e?.code === 'ENOTFOUND' ? ' (không tìm thấy tên miền, kiểm tra Địa chỉ API hoặc mạng)'
-          : e?.code === 'ECONNREFUSED' ? ' (máy chủ từ chối kết nối)'
-          : e?.code === 'ETIMEDOUT' || e?.code === 'ECONNRESET' ? ' (mạng chậm/bị chặn, thử tắt VPN/tường lửa hoặc thử lại)'
-          : /certificate|CERT|SSL|TLS/i.test(String(e?.code || e?.message)) ? ' (lỗi chứng chỉ HTTPS, có thể do phần mềm diệt virus/proxy chặn)'
-          : '';
-        res.end(`Proxy không kết nối được tới ${target.host}: ${e?.code || ''} ${e?.message || e}${hint}`);
-      });
-      req.pipe(upstream);
+      forward(req, res, target, headers);
     });
   },
 });
@@ -118,10 +218,8 @@ const passwordGate = (password: string): Plugin => ({
 </form></body></html>`;
 
     server.middlewares.use((req, res, next) => {
-      const fromTunnel = !!(req.headers['cf-ray'] || req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']);
       const remote = req.socket.remoteAddress || '';
-      const isLocal = !fromTunnel && /^(::1|127\.|::ffff:127\.)/.test(remote);
-      if (isLocal) return next();
+      if (isLocalRequest(req)) return next();
 
       const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || remote).split(',')[0].trim();
       const cookie = String(req.headers.cookie || '');
@@ -177,7 +275,9 @@ export default defineConfig(({ mode }) => {
         // Cho phép mở qua đường link công khai (Cloudflare Tunnel / ngrok)
         allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.loca.lt', ...(env.PUBLIC_HOSTS ? env.PUBLIC_HOSTS.split(',') : [])],
       },
-      plugins: [passwordGate(password), react(), aiProxy(env.VITE_AI_BASE_URL || 'https://api.openai.com/v1')],
+      plugins: [passwordGate(password), react(), aiServer(env)],
+      // Không đưa biến VITE_* (chứa key) xuống trình duyệt; key chỉ đọc ở máy chủ.
+      envPrefix: 'LEGALBIZ_PUBLIC_',
       resolve: {
         alias: {
           '@': path.resolve('.'),

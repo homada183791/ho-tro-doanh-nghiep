@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FileText, MessageSquare, Image as ImageIcon, Scale, KeyRound } from 'lucide-react';
-import { getAISettings, isConfigured, maskKey, AI_SETTINGS_EVENT } from '../services/aiSettings';
+import { getAISettings, isConfigured, maskKey, AI_SETTINGS_EVENT, isServerMode } from '../services/aiSettings';
 
 interface SidebarProps {
   currentView: 'documents' | 'chat' | 'brand';
@@ -64,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onOpenSett
             <span className="font-semibold text-slate-200 text-sm">Cài đặt API</span>
             <span className={`ml-auto w-2 h-2 rounded-full ${ready ? 'bg-green-400' : 'bg-amber-400'}`} />
           </div>
-          <p>{isGemini ? 'Google Gemini' : 'Chuẩn OpenAI'} · {ready ? maskKey(isGemini ? settings.geminiKey : settings.apiKey) : 'chưa có key'}</p>
+          <p>{isGemini ? 'Google Gemini' : 'Chuẩn OpenAI'} · {ready ? (isServerMode() ? 'key trên máy chủ' : maskKey(isGemini ? settings.geminiKey : settings.apiKey)) : 'chưa có key'}</p>
         </button>
       </div>
     </div>

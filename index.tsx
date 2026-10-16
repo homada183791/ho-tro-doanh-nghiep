@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { loadServerConfig } from './services/aiSettings';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,8 +9,9 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
+// Lấy cấu hình AI từ máy chủ (không kèm key) trước khi hiện giao diện
+loadServerConfig().finally(() => root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
-);
+));

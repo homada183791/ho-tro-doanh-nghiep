@@ -19,7 +19,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { getAISettings, AISettings, AI_SETTINGS_EVENT } from "./aiSettings";
+import { getAISettings, AISettings, AI_SETTINGS_EVENT, isServerMode, getServerState } from "./aiSettings";
 
 /**
  * Cấu hình được đọc lại MỖI LẦN GỌI từ getAISettings() (cài đặt trên web, nếu không có thì .env.local),
@@ -288,20 +288,28 @@ const callAI = (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> =>
 
 const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> => {
   const s = cfg();
+  const managed = isServerMode();
   const API_KEY = s.apiKey.trim();
   const BASE_URL = baseUrlOf(s);
   const WIRE = s.wire;
-  if (!API_KEY) throw new Error("Chưa có API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
+  if (!API_KEY) {
+    throw new Error(managed
+      ? "Máy chủ chưa có API key. Người quản trị cần mở \"Cài đặt API\" trên máy chủ để nhập."
+      : "Chưa có API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
+  }
   const endpoint = WIRE === "responses" ? "/responses" : "/chat/completions";
   const body = WIRE === "responses" ? buildResponsesBody(model, msgs, fmt) : buildChatBody(model, msgs, fmt);
   // Khi chạy npm run dev: gửi qua proxy của Vite (/ai-api) để tránh lỗi CORS; proxy đọc địa chỉ đích từ header.
-  const url = env.DEV ? `/ai-api${endpoint}` : `${BASE_URL}${endpoint}`;
-  const devHeaders: Record<string, string> = env.DEV ? { "x-ai-target": BASE_URL } : {};
+  // Máy chủ quản lý key: luôn gửi qua máy chủ, không kèm key (máy chủ tự gắn).
+  const url = managed || env.DEV ? `/ai-api${endpoint}` : `${BASE_URL}${endpoint}`;
+  const devHeaders: Record<string, string> = !managed && env.DEV ? { "x-ai-target": BASE_URL } : {};
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...headersOf(s), ...devHeaders },
+      headers: managed
+        ? { "Content-Type": "application/json" }
+        : { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...headersOf(s), ...devHeaders },
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -433,6 +441,13 @@ const friendlyGeminiError = (e: any): Error => {
 
 /** Client Gemini dùng chung cho cả tạo ảnh logo. */
 export const getGeminiSDK = (): GoogleGenAI => {
+  if (isServerMode()) {
+    if (!getServerState()?.hasGeminiKey) {
+      throw new Error("Máy chủ chưa có Gemini API key. Người quản trị cần mở \"Cài đặt API\" trên máy chủ để nhập.");
+    }
+    // Gọi qua máy chủ; máy chủ thay "server-managed" bằng key thật
+    return new GoogleGenAI({ apiKey: "server-managed", httpOptions: { baseUrl: `${location.origin}/gemini-api` } });
+  }
   const key = cfg().geminiKey.trim();
   if (!key) throw new Error("Chưa có Gemini API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
   return new GoogleGenAI({ apiKey: key });
