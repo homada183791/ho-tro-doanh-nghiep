@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Công cụ public web (cloudflared, mật khẩu, log)
+tools/
