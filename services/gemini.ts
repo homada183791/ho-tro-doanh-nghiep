@@ -3,6 +3,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { createAIClient, ChatSession, generateGeminiImage } from "./aiClient";
 import { BusinessInfo, ImageSettings, IndustryCode } from "../types";
+import { searchVsic, vsicDetails, vsicCompactList, validateIndustryCodes, findVsic } from "./vsic";
 
 // Helper to get client - ALWAYS create new to ensure API key freshness if it changes (though environment usually static)
 // Fix: Correct initialization using named parameter
@@ -234,33 +235,67 @@ export const analyzeBusinessInput = async (text: string, taskType: 'new' | 'chan
   }
 };
 
+/** Lược đồ JSON chung cho danh sách mã ngành. */
+const industrySchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            code: { type: Type.STRING },
+            name: { type: Type.STRING },
+            isMain: { type: Type.BOOLEAN },
+        },
+        required: ["code", "name", "isMain"]
+    }
+};
+
+const parseCodes = (text?: string): IndustryCode[] => {
+    if (!text) return [];
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [];
+};
+
 /**
- * Maps industry description to VSIC codes.
+ * Tra mã ngành theo mô tả, CHỈ chọn trong danh mục VSIC 2025 (data/vsic2025.json).
+ * Kết quả được đối chiếu lại với danh mục: mã không tồn tại bị bỏ, tên ngành lấy đúng theo danh mục.
  */
 export const lookupIndustryCodes = async (mainIndustry: string, subIndustries: string): Promise<IndustryCode[]> => {
     const ai = getClient();
-    // Fix: Use gemini-3.1-pro-preview for accurate industry analysis with search grounding
     const modelId = "gemini-3.1-pro-preview";
 
+    // Các mã có khả năng khớp nhất (kèm phần bao gồm/loại trừ) để AI phân biệt các mã gần nhau
+    const candidates = [
+        ...searchVsic(mainIndustry, 15),
+        ...searchVsic(`${mainIndustry}\n${subIndustries}`, 35),
+    ].filter((e, i, arr) => arr.findIndex((x) => x.code === e.code) === i).slice(0, 40);
+
     const prompt = `
-      Bạn là chuyên gia về Hệ thống ngành kinh tế Việt Nam.
-      
-      Nhiệm vụ: Phân tích mô tả ngành nghề kinh doanh sau và chuyển đổi thành danh sách Mã ngành cấp 4 (4 chữ số) TÂN CẬP NHẬT THEO Quyết định số 36/2025/QĐ-TTg (ban hành ngày 29 tháng 9 năm 2025). 
-      Tuyệt đối KHÔNG DÙNG Quyết định 27 cũ. Hãy dùng công cụ tìm kiếm nếu cần để đối chiếu mã ngành đúng theo VSIC mới nhất (36/2025/QĐ-TTg).
+      Bạn là chuyên viên đăng ký kinh doanh, chuyên xếp mã ngành theo Hệ thống ngành kinh tế Việt Nam
+      ban hành kèm Quyết định số 36/2025/QĐ-TTg (VSIC 2025).
+
+      Nhiệm vụ: chuyển mô tả ngành nghề dưới đây thành danh sách mã ngành cấp 4.
 
       Đầu vào:
       - Ngành nghề chính: "${mainIndustry}"
       - Ngành nghề phụ/khác: "${subIndustries}"
 
-      Yêu cầu:
-      1. Liệt kê TẤT CẢ các mã ngành phù hợp với mô tả.
-      2. Xác định chính xác mã ngành nào tương ứng với "Ngành nghề chính" (isMain = true).
-      3. Đặt tên ngành chính xác theo quy định pháp luật hiện hành (QĐ 36/2025/QĐ-TTg). CHÚ Ý QUAN TRỌNG: NẾU TRẢ VỀ HOẶC CÓ LIÊN QUAN ĐẾN MÃ 7020, TÊN BẮT BUỘC VÀ CHÍNH XÁC PHẢI LÀ: "Hoạt động tư vấn quản lý kinh doanh và hoạt động tư vấn quản lý khác".
+      QUY TẮC BẮT BUỘC:
+      1. CHỈ được chọn mã có trong "DANH MỤC VSIC 2025" bên dưới. Không dùng mã theo danh mục cũ (QĐ 27/2018), không tự tạo mã.
+      2. "name" phải chép NGUYÊN VĂN tên ngành trong danh mục, không sửa chữ nào.
+      3. Liệt kê đủ mọi mã phù hợp với mô tả; mỗi hoạt động chọn mã sát nghĩa nhất.
+      4. Đọc phần "Loại trừ" của các mã gợi ý: nếu hoạt động bị loại trừ khỏi một mã thì chọn mã mà phần loại trừ chỉ tới.
+      5. Đúng MỘT mã có isMain = true: mã tương ứng với "Ngành nghề chính". Các mã còn lại isMain = false.
+      6. Nếu người dùng ghi sẵn mã số, kiểm tra mã đó có đúng với mô tả theo danh mục mới không; sai thì chọn mã đúng.
 
-      Output JSON format:
+      CÁC MÃ CÓ KHẢ NĂNG PHÙ HỢP (mô tả chi tiết):
+      ${candidates.length ? vsicDetails(candidates) : '(không tìm thấy theo từ khoá, hãy chọn trong danh mục đầy đủ)'}
+
+      DANH MỤC VSIC 2025 ĐẦY ĐỦ (mã cấp 4 và tên ngành):
+      ${vsicCompactList()}
+
+      Chỉ trả về JSON:
       [
-        { "code": "1234", "name": "Tên ngành theo quy định", "isMain": boolean },
-        ...
+        { "code": "4 chữ số", "name": "tên ngành nguyên văn theo danh mục", "isMain": true/false }
       ]
     `;
 
@@ -270,62 +305,67 @@ export const lookupIndustryCodes = async (mainIndustry: string, subIndustries: s
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                // Enable tool hybrid mode and add search tool
-                tools: [{ googleSearch: {} }],
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            code: { type: Type.STRING },
-                            name: { type: Type.STRING },
-                            isMain: { type: Type.BOOLEAN },
-                        },
-                        required: ["code", "name", "isMain"]
-                    }
-                }
+                responseSchema: industrySchema,
             }
         });
-
-        // Fix: Access .text property directly
-        if (response.text) {
-            return JSON.parse(response.text) as IndustryCode[];
+        const { codes, rejected } = validateIndustryCodes(parseCodes(response.text), { requireMain: true });
+        if (!codes.length) {
+            throw new Error(
+                rejected.length
+                    ? `AI chỉ trả về mã không có trong danh mục VSIC 2025 (${rejected.join(', ')}). Hãy mô tả ngành nghề cụ thể hơn rồi thử lại.`
+                    : "Không tìm thấy mã ngành phù hợp trong danh mục VSIC 2025. Hãy mô tả ngành nghề cụ thể hơn."
+            );
         }
-        return [];
+        return codes;
     } catch (e) {
         console.error("Industry lookup failed", e);
         throw e;
     }
 }
 
+/**
+ * Gợi ý thêm mã ngành liên quan, CHỈ trong danh mục VSIC 2025, không trùng các mã đã có.
+ */
 export const suggestRelatedIndustryCodes = async (currentCodes: IndustryCode[]): Promise<IndustryCode[]> => {
     const ai = getClient();
     const modelId = "gemini-3.1-pro-preview";
 
+    // Chuẩn hoá danh sách hiện có theo danh mục (tên chính thức)
+    const current = currentCodes.map((c) => {
+        const e = findVsic(c.code);
+        return e ? { code: e.code, name: e.name } : { code: c.code, name: `${c.name} (KHÔNG có trong danh mục 2025)` };
+    });
+    // Mã có khả năng liên quan: tìm theo tên các ngành hiện có
+    const candidates = searchVsic(current.map((c) => c.name).join('\n'), 45)
+        .filter((e) => !current.some((c) => c.code === e.code));
+
     const prompt = `
-      Bạn là chuyên gia về Hệ thống ngành kinh tế Việt Nam (VSIC) theo Quyết định số 36/2025/QĐ-TTg (ban hành ngày 29/09/2025).
-      
-      Nhiệm vụ: Dựa vào danh sách mã ngành hiện tại của doanh nghiệp, hãy suy luận logic và gợi ý THÊM các mã ngành liên quan THIẾT THỰC để mở rộng hệ sinh thái hoạt động theo đúng các quy tắc sau:
-      - QUY TẮC 1: Nếu có mã ngành "Sản xuất" thì bắt buộc thêm mã "Bán buôn" cho mặt hàng sản xuất đó.
-      - QUY TẮC 2: Nếu có mã ngành "Bán buôn" thì bắt buộc thêm mã ngành "Bán lẻ" cho mặt hàng đó và ngược lại (Bán lẻ -> thêm Bán buôn).
-      - QUY TẮC 3: Nếu ngành hiện tại là "Xây dựng" (hoặc kinh doanh vật liệu xây dựng), THÊM CHỌN LỌC các mã ngành liên quan TRỰC TIẾP đến:
-         * Xây dựng, thi công, thiết kế và thẩm tra công trình, nội thất.
-         * Bán buôn, bán lẻ trực tiếp vật liệu xây dựng (gạch, ngói, xi măng, đá, cát, sàn gỗ, tre, nứa...) và thiết bị vệ sinh.
-         * Lưu kho, bãi, và vận chuyển hàng hóa, vật liệu xây dựng.
-      - QUY TẮC 4: Nếu ngành chính là một ngành "Dịch vụ", hãy THÊM các ngành về tư vấn, thiết kế, phục vụ trực tiếp cho dịch vụ đó.
-      - QUY TẮC 5: CHỈ GỢI Ý NGÀNH CÓ LIÊN QUAN TRỰC TIẾP. Tuyệt đối KHÔNG ĐƯỢC trả về các mã ngành không liên quan (Ví dụ: Đang kinh doanh vật liệu xây dựng thì KHÔNG ĐƯỢC thêm Mã quảng cáo, Mã nhiếp ảnh, tư vấn quản lý... trừ khi thực sự phù hợp).
-      
-      LƯU Ý ĐẶC BIỆT QUAN TRỌNG (BUỘC PHẢI TUÂN THỦ): 
-      + CHỈ SỬ DỤNG MÃ VÀ TÊN NGÀNH THEO QUYẾT ĐỊNH SỐ 36/2025/QĐ-TTg (mới nhất).
-      + NẾU TRẢ VỀ HOẶC CÓ LIÊN QUAN ĐẾN MÃ 7020, TÊN NGÀNH BẮT BUỘC VÀ CHÍNH XÁC PHẢI LÀ: "Hoạt động tư vấn quản lý kinh doanh và hoạt động tư vấn quản lý khác" (Tuyệt đối không được dùng tên "Hoạt động tư vấn quản lý"). Đây là điều tối kỵ, không được sai lệch tên.
-      + Trả về danh sách mở rộng tinh gọn, chính xác dưới dạng JSON list. Không trùng lặp các mã đã có ở đầu vào. isMain luôn bằng false.
-      
-      Danh sách mã ngành hiện tại:
-      ${JSON.stringify(currentCodes, null, 2)}
-      
-      Output JSON format:
+      Bạn là chuyên viên đăng ký kinh doanh, nắm vững Hệ thống ngành kinh tế Việt Nam theo Quyết định số 36/2025/QĐ-TTg (VSIC 2025).
+
+      Nhiệm vụ: dựa vào các mã ngành hiện có của doanh nghiệp, gợi ý THÊM các mã liên quan thiết thực, theo các quy tắc:
+      - QUY TẮC 1: Có mã "Sản xuất" thì thêm mã "Bán buôn" mặt hàng đó.
+      - QUY TẮC 2: Có mã "Bán buôn" thì thêm mã "Bán lẻ" mặt hàng đó và ngược lại.
+      - QUY TẮC 3: Ngành "Xây dựng" (hoặc kinh doanh vật liệu xây dựng): chỉ thêm các mã liên quan trực tiếp đến thi công, thiết kế,
+        hoàn thiện, nội thất; bán buôn/bán lẻ vật liệu xây dựng và thiết bị vệ sinh; kho bãi và vận chuyển hàng hoá.
+      - QUY TẮC 4: Ngành chính là "Dịch vụ": thêm các ngành tư vấn, thiết kế, phục vụ trực tiếp cho dịch vụ đó.
+      - QUY TẮC 5: Chỉ gợi ý ngành liên quan TRỰC TIẾP. Không thêm mã lạc đề (ví dụ đang kinh doanh vật liệu xây dựng thì không thêm quảng cáo, nhiếp ảnh, tư vấn quản lý…).
+
+      QUY TẮC BẮT BUỘC VỀ MÃ:
+      - CHỈ chọn mã có trong "DANH MỤC VSIC 2025" bên dưới; "name" chép NGUYÊN VĂN tên trong danh mục.
+      - Không trùng các mã đã có. isMain luôn = false.
+
+      Mã ngành hiện có:
+      ${current.map((c) => `${c.code} ${c.name}`).join('\n')}
+
+      CÁC MÃ CÓ KHẢ NĂNG LIÊN QUAN (mô tả chi tiết):
+      ${candidates.length ? vsicDetails(candidates.slice(0, 35)) : '(không có)'}
+
+      DANH MỤC VSIC 2025 ĐẦY ĐỦ (mã cấp 4 và tên ngành):
+      ${vsicCompactList()}
+
+      Chỉ trả về JSON:
       [
-        { "code": "Mã ngành 4 số (theo 36/2025)", "name": "Tên ngành chuẩn", "isMain": false }
+        { "code": "4 chữ số", "name": "tên ngành nguyên văn theo danh mục", "isMain": false }
       ]
     `;
 
@@ -335,26 +375,11 @@ export const suggestRelatedIndustryCodes = async (currentCodes: IndustryCode[]):
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                tools: [{ googleSearch: {} }],
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            code: { type: Type.STRING },
-                            name: { type: Type.STRING },
-                            isMain: { type: Type.BOOLEAN },
-                        },
-                        required: ["code", "name", "isMain"]
-                    }
-                }
+                responseSchema: industrySchema,
             }
         });
-
-        if (response.text) {
-            return JSON.parse(response.text) as IndustryCode[];
-        }
-        return [];
+        const { codes } = validateIndustryCodes(parseCodes(response.text), { exclude: currentCodes.map((c) => c.code) });
+        return codes.map((c) => ({ ...c, isMain: false }));
     } catch (e) {
         console.error("Suggestion lookup failed", e);
         throw e;
