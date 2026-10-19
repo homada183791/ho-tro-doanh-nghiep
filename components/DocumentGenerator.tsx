@@ -316,7 +316,7 @@ const DocumentGenerator: React.FC = () => {
 
   const handleTranslateName = async () => {
     if (!info.name.trim()) {
-      alert("Vui lòng nhập tên công ty Tiếng Việt trước.");
+      alert("Vui lòng nhập tên công ty bằng tiếng Việt trước.");
       return;
     }
     setIsTranslating(true);
@@ -1213,20 +1213,18 @@ const DocumentGenerator: React.FC = () => {
           <p className="text-slate-500 text-lg">Chọn loại hồ sơ bạn cần soạn thảo để AI hỗ trợ chính xác nhất.</p>
         </header>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-          <button onClick={() => handleTaskSelect('new')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 text-left">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-indigo-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 rounded-t-2xl"></div>
+          <button onClick={() => handleTaskSelect('new')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all duration-300 text-left">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors duration-300">
                <PlusCircle className="w-8 h-8 text-blue-600 group-hover:text-white transition-colors" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-blue-600 transition-colors">Thành Lập Mới</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-blue-600 transition-colors">Thành lập mới</h3>
             <p className="text-slate-500 leading-relaxed">Soạn thảo trọn bộ hồ sơ thành lập doanh nghiệp, bao gồm Giấy đề nghị, Điều lệ và Danh sách thành viên.</p>
           </button>
-          <button onClick={() => handleTaskSelect('change')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-500 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 text-left">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 rounded-t-2xl"></div>
+          <button onClick={() => handleTaskSelect('change')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all duration-300 text-left">
             <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-600 transition-colors duration-300">
                <FilePenLine className="w-8 h-8 text-emerald-600 group-hover:text-white transition-colors" />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-emerald-600 transition-colors">Thay Đổi Thông Tin</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-emerald-600 transition-colors">Thay đổi thông tin</h3>
             <p className="text-slate-500 leading-relaxed">Soạn thảo hồ sơ thay đổi nội dung đăng ký kinh doanh như: đổi tên, địa chỉ, tăng vốn, thay đổi ngành nghề.</p>
           </button>
         </div>
@@ -1241,7 +1239,7 @@ const DocumentGenerator: React.FC = () => {
            <button onClick={handleBack} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 mb-4 transition-colors font-medium text-sm">
             <ArrowLeft className="w-4 h-4" /> Quay lại chọn thủ tục
           </button>
-          <h2 className="text-3xl font-bold text-slate-800">Chọn Loại Hình Doanh Nghiệp</h2>
+          <h2 className="text-3xl font-bold text-slate-800">Chọn loại hình doanh nghiệp</h2>
         </header>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {businessTypes.map((t) => {
@@ -1268,7 +1266,7 @@ const DocumentGenerator: React.FC = () => {
           <ArrowLeft className="w-4 h-4" /> Quay lại chọn loại hình
         </button>
         <div className="flex items-center gap-3">
-           <h2 className="text-3xl font-bold text-slate-800">{taskType === 'new' ? 'Soạn Hồ Sơ Thành Lập' : 'Soạn Hồ Sơ Thay Đổi'}</h2>
+           <h2 className="text-3xl font-bold text-slate-800">{taskType === 'new' ? 'Soạn hồ sơ thành lập' : 'Soạn hồ sơ thay đổi'}</h2>
            <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">{info.type}</span>
         </div>
         <p className="text-slate-500 mt-2">Điền thông tin doanh nghiệp để AI tự động tạo bộ hồ sơ.</p>
@@ -1282,9 +1280,9 @@ const DocumentGenerator: React.FC = () => {
              <h3 className="font-bold text-slate-800">Nhập liệu thông minh</h3>
           </div>
           <p className="text-sm text-slate-600 mb-4">Dán thông tin thô (email, tin nhắn...) vào đây để AI tự động điền.</p>
-          <div className="flex gap-4 items-start">
-             <textarea value={rawInput} onChange={(e) => setRawInput(e.target.value)} placeholder="VD: Công ty TNHH ABC, vốn 1 tỷ, Giám đốc Nguyễn Văn A..." className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none bg-white text-sm" />
-             <button onClick={handleAnalyze} disabled={isAnalyzing || !rawInput.trim()} className="flex flex-col items-center justify-center gap-2 px-6 h-24 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all shadow-md disabled:bg-slate-300 disabled:cursor-not-allowed min-w-[120px]">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-start">
+             <textarea value={rawInput} onChange={(e) => setRawInput(e.target.value)} placeholder="VD: Công ty TNHH ABC, vốn 1 tỷ, Giám đốc Nguyễn Văn A..." className="w-full sm:flex-1 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none bg-white text-sm" />
+             <button onClick={handleAnalyze} disabled={isAnalyzing || !rawInput.trim()} className="flex sm:flex-col items-center justify-center gap-2 px-6 h-12 sm:h-24 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors shadow-sm disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed min-w-[120px]">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="w-6 h-6 animate-spin" />
@@ -1337,8 +1335,8 @@ const DocumentGenerator: React.FC = () => {
                 <div className="mb-6 pb-6 border-b border-slate-100">
                     <div className="flex flex-col gap-2 mb-3">
                          <div className="flex justify-between items-center">
-                            <div className="text-xs font-bold text-slate-700 uppercase">
-                                1. CHỦ SỞ HỮU
+                            <div className="text-sm font-semibold text-slate-800">
+                                1. Chủ sở hữu
                             </div>
                             <div className="flex bg-slate-100 p-0.5 rounded-lg">
                                 <button onClick={() => setOwnerType('individual')} className={`px-2 py-1 text-[10px] rounded-md transition-all ${info.ownerType === 'individual' ? 'bg-white shadow text-blue-600 font-medium' : 'text-slate-500'}`}>Cá nhân</button>
@@ -1385,7 +1383,7 @@ const DocumentGenerator: React.FC = () => {
 
                 <div>
                     <div className="flex justify-between items-center mb-3">
-                         <div className="text-xs font-bold text-slate-700 uppercase">
+                         <div className="text-sm font-semibold text-slate-800">
                              2. Giám đốc / Đại diện pháp luật
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg">
@@ -1464,13 +1462,13 @@ const DocumentGenerator: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tên Doanh Nghiệp (Tiếng Việt)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Tên doanh nghiệp (tiếng Việt)</label>
                 <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold text-slate-800" placeholder="VD: CÔNG TY TNHH ABC" value={info.name} onChange={e => setInfo({ ...info, name: e.target.value.toUpperCase() })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="block text-sm font-medium text-slate-700">Tên Tiếng Anh</label>
+                      <label className="block text-sm font-medium text-slate-700">Tên tiếng Anh</label>
                       <button 
                         onClick={handleTranslateName}
                         disabled={isTranslating || !info.name}
@@ -1483,18 +1481,18 @@ const DocumentGenerator: React.FC = () => {
                     <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="VD: ABC COMPANY LIMITED" value={info.nameEn} onChange={e => setInfo({ ...info, nameEn: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Tên Viết Tắt</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tên viết tắt</label>
                     <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="VD: ABC CO.,LTD" value={info.nameAbbr} onChange={e => setInfo({ ...info, nameAbbr: e.target.value })} />
                   </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Vốn Điều Lệ (Số)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Vốn điều lệ (số)</label>
                     <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium" placeholder="VD: 1.000.000.000 đồng" value={info.capital} onChange={e => setInfo({ ...info, capital: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Vốn Điều Lệ (Chữ)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Vốn điều lệ (chữ)</label>
                     <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium" placeholder="VD: Một tỷ đồng" value={info.capitalInWords} onChange={e => setInfo({ ...info, capitalInWords: e.target.value })} />
                   </div>
               </div>
@@ -1540,7 +1538,7 @@ const DocumentGenerator: React.FC = () => {
 
                <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                         <label className="block text-sm font-medium text-slate-700">Ngành Nghề</label>
+                         <label className="block text-sm font-medium text-slate-700">Ngành nghề</label>
                          <button 
                             onClick={handleLookupIndustry}
                             disabled={isLookingUpCodes}
@@ -1556,7 +1554,7 @@ const DocumentGenerator: React.FC = () => {
                     {info.industryCodes.length > 0 && (
                         <div className="overflow-hidden border border-slate-200 rounded-lg">
                             <table className="w-full text-[11px] text-left">
-                                <thead className="bg-slate-50 text-slate-500 uppercase">
+                                <thead className="bg-slate-50 text-slate-500">
                                     <tr>
                                         <th className="px-2 py-2 w-8 text-center border-r border-slate-200">STT</th>
                                         <th className="px-2 py-2">Tên ngành nghề</th>
@@ -1609,7 +1607,7 @@ const DocumentGenerator: React.FC = () => {
 
                         {info.ownerType === 'organization' && (
                             <div className="space-y-3 p-3 border border-blue-100 rounded-xl bg-blue-50/50 mb-4">
-                                <h5 className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
+                                <h5 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                                     <Building2 className="w-3 h-3" /> Thông tin tổ chức
                                 </h5>
                                 <div>
@@ -1653,7 +1651,7 @@ const DocumentGenerator: React.FC = () => {
                         )}
 
                         {info.ownerType === 'organization' && (
-                            <h5 className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase mt-4 mb-2">
+                            <h5 className="flex items-center gap-2 text-sm font-semibold text-slate-800 mt-4 mb-2">
                                 <UserCircle2 className="w-3 h-3" /> Người đại diện theo ủy quyền
                             </h5>
                         )}
@@ -1746,7 +1744,7 @@ const DocumentGenerator: React.FC = () => {
                         {/* Beneficial Owner Section - Only for Organizations */}
                         {info.ownerType === 'organization' && (
                             <div className="mt-4 pt-4 border-t border-slate-100 bg-purple-50/50 p-3 rounded-xl border border-purple-100">
-                                <h5 className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase mb-3">
+                                <h5 className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-3">
                                     <Crown className="w-3 h-3 text-purple-600" /> Chủ sở hữu hưởng lợi (Người kiểm soát)
                                 </h5>
                                 
@@ -1758,9 +1756,9 @@ const DocumentGenerator: React.FC = () => {
                                             value={info.beneficialOwnerType}
                                             onChange={(e) => setInfo({ ...info, beneficialOwnerType: e.target.value as any })}
                                         >
-                                            <option value="auth_rep">Là Người đại diện theo ủy quyền (như trên)</option>
-                                            <option value="legal_rep_org">Là Người đại diện pháp luật của tổ chức (trong ĐKKD)</option>
-                                            <option value="other">Là Người khác (Nhập tay)</option>
+                                            <option value="auth_rep">Là người đại diện theo ủy quyền (như trên)</option>
+                                            <option value="legal_rep_org">Là người đại diện pháp luật của tổ chức (trong ĐKKD)</option>
+                                            <option value="other">Là người khác (nhập tay)</option>
                                         </select>
                                     </div>
 
@@ -2037,9 +2035,9 @@ const DocumentGenerator: React.FC = () => {
                             Kết quả hồ sơ
                         </h3>
                         <div className="flex gap-2">
-                             <button onClick={handleGenerate} disabled={loading} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center gap-2 disabled:bg-slate-300 disabled:cursor-not-allowed">
+                             <button onClick={handleGenerate} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold shadow-sm transition-colors flex items-center gap-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed">
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                                {loading ? 'Đang xử lý...' : 'Tạo Hồ Sơ'}
+                                {loading ? 'Đang xử lý...' : 'Tạo hồ sơ'}
                              </button>
                         </div>
                     </div>
@@ -2051,7 +2049,7 @@ const DocumentGenerator: React.FC = () => {
                     ) : (
                         <div className="py-10 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 text-center px-4">
                             <FileText className="w-12 h-12 mb-3 opacity-20" />
-                            <p>Điền thông tin và nhấn "Tạo Hồ Sơ" để xem trước và xuất Excel</p>
+                            <p>Điền thông tin và nhấn "Tạo hồ sơ" để xem trước và xuất Excel</p>
                         </div>
                     )}
 

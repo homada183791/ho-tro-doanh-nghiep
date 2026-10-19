@@ -69,7 +69,7 @@ const BrandStudio: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto pb-12">
       <header className="mb-8">
-        <h2 className="text-3xl font-bold text-slate-800">Thiết Kế Thương Hiệu</h2>
+        <h2 className="text-3xl font-bold text-slate-800">Thiết kế thương hiệu</h2>
         <p className="text-slate-500 mt-2">Tạo logo và bộ nhận diện thương hiệu với Gemini 3 Pro Image.</p>
       </header>
 
@@ -162,12 +162,12 @@ const BrandStudio: React.FC = () => {
                     disabled={loading || !prompt || hasKey === false}
                     className={`w-full py-3 rounded-xl font-semibold text-white shadow-lg flex items-center justify-center gap-2 transition-all ${
                     loading || !prompt || hasKey === false
-                        ? 'bg-slate-300 cursor-not-allowed shadow-none text-slate-500'
-                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:shadow-purple-500/25 active:scale-[0.98]'
+                        ? 'bg-slate-200 cursor-not-allowed shadow-none text-slate-400'
+                        : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98]'
                     }`}
                 >
                     {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-                    {loading ? 'Đang vẽ...' : 'Tạo Thiết Kế'}
+                    {loading ? 'Đang vẽ...' : 'Tạo thiết kế'}
                 </button>
                  <p className="text-[10px] text-slate-400 mt-3 text-center">
                     * Gemini 3 Pro Image yêu cầu API Key trả phí để hỗ trợ độ phân giải cao và chất lượng thiết kế tối ưu.
@@ -197,7 +197,7 @@ const BrandStudio: React.FC = () => {
                     <div className="w-full h-full flex flex-col items-center gap-6">
                         {generatedImages.map((img, idx) => (
                             <div key={idx} className="relative group rounded-xl overflow-hidden shadow-2xl border border-slate-200">
-                                <img src={img} alt="Generated Brand Asset" className="max-w-full max-h-[600px] object-contain" />
+                                <img src={img} alt="Logo đã tạo" className="max-w-full max-h-[600px] object-contain" />
                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-4">
                                      <a 
                                         href={img} 

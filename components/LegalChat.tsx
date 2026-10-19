@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from '../types';
 import { createLegalChat } from '../services/gemini';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, User, Loader2, Scale } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatSession as Chat } from '../services/aiClient';
 import { AI_SETTINGS_EVENT } from '../services/aiSettings';
+
+const SUGGESTIONS = [
+  'Thành lập công ty TNHH 1 thành viên cần những giấy tờ gì?',
+  'Chuyển trụ sở sang tỉnh khác thì làm thủ tục thế nào?',
+  'Hộ kinh doanh có phải nộp lệ phí môn bài không?',
+  'Tăng vốn điều lệ phải thông báo trong bao lâu?',
+];
 
 const LegalChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -36,20 +43,21 @@ const LegalChat: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (preset?: string) => {
+    const question = (preset ?? input).trim();
+    if (!question || loading) return;
     if (!chatSession.current) {
       try {
         chatSession.current = createLegalChat();
       } catch (e: any) {
-        setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${e?.message || e}`, timestamp: new Date() }]);
+        setMessages(prev => [...prev, { role: 'model', text: `**Không gửi được câu hỏi.** ${e?.message || e}`, timestamp: new Date() }]);
         return;
       }
     }
 
     const userMsg: ChatMessage = {
       role: 'user',
-      text: input,
+      text: question,
       timestamp: new Date()
     };
 
@@ -70,7 +78,7 @@ const LegalChat: React.FC = () => {
       const errorMsg: ChatMessage = {
         role: 'model',
         text: error?.message
-          ? `⚠️ ${error.message}`
+          ? `**Không nhận được câu trả lời.** ${error.message}`
           : 'Đã xảy ra lỗi kết nối. Vui lòng thử lại sau.',
         timestamp: new Date()
       };
@@ -88,10 +96,10 @@ const LegalChat: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-80px)] flex flex-col">
+    <div className="max-w-4xl mx-auto h-[calc(100dvh-88px)] sm:h-[calc(100dvh-104px)] lg:h-[calc(100dvh-64px)] flex flex-col">
        <header className="mb-6 flex-shrink-0">
-        <h2 className="text-3xl font-bold text-slate-800">Trợ Lý Pháp Lý AI</h2>
-        <p className="text-slate-500 mt-2">Hỏi đáp trực tiếp về Luật Doanh Nghiệp, thuế, và quy trình hành chính.</p>
+        <h2 className="text-3xl font-bold text-slate-800">Trợ lý pháp lý AI</h2>
+        <p className="text-slate-500 mt-2">Hỏi đáp trực tiếp về Luật Doanh nghiệp, thuế và thủ tục hành chính.</p>
       </header>
 
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
@@ -102,8 +110,8 @@ const LegalChat: React.FC = () => {
             return (
               <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                 <div className={`flex gap-3 max-w-[80%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-blue-600' : 'bg-emerald-600'}`}>
-                    {isUser ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-white" />}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-slate-700' : 'bg-blue-50 border border-blue-200'}`}>
+                    {isUser ? <User className="w-4 h-4 text-white" /> : <Scale className="w-4 h-4 text-blue-700" />}
                   </div>
                   <div className={`p-4 rounded-2xl shadow-sm ${isUser ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'}`}>
                     <div className={`prose ${isUser ? 'prose-invert' : 'prose-slate'} max-w-none text-sm`}>
@@ -117,17 +125,33 @@ const LegalChat: React.FC = () => {
               </div>
             );
           })}
+          {messages.length === 1 && !loading && (
+            <div className="pl-11">
+              <p className="text-sm text-slate-500 mb-2">Câu hỏi thường gặp</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => handleSend(q)}
+                    className="text-left text-sm px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-blue-400 hover:text-blue-800 transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {loading && (
             <div className="flex justify-start">
                <div className="flex gap-3 max-w-[80%]">
-                  <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-white" />
+                  <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                    <Scale className="w-4 h-4 text-blue-700" />
                   </div>
                   <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-slate-200 shadow-sm flex items-center gap-2">
                     <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-0"></div>
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-300"></div>
+                      <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce delay-0"></div>
+                      <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce delay-150"></div>
+                      <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce delay-300"></div>
                     </div>
                   </div>
                </div>
@@ -144,13 +168,14 @@ const LegalChat: React.FC = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Nhập câu hỏi của bạn..."
-              className="w-full p-3 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none max-h-32 min-h-[50px] custom-scrollbar"
+              className="w-full p-3 pr-12 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none max-h-32 min-h-[50px] custom-scrollbar"
               rows={1}
             />
             <button
-              onClick={handleSend}
+              onClick={() => handleSend()}
+              aria-label="Gửi câu hỏi"
               disabled={loading || !input.trim()}
-              className="absolute right-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition"
+              className="absolute right-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </button>

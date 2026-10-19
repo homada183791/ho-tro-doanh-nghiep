@@ -608,16 +608,16 @@ export const testAIConnection = async (): Promise<{ ok: boolean; message: string
       } else {
         await createAIClient().models.generateContent({ model: codeModel, contents: "Trả lời đúng một từ: OK" });
       }
-      return `✓ ${name} (${Date.now() - started} ms)`;
+      return `Đạt: ${name} (${Date.now() - started} ms)`;
     } catch (e: any) {
       const err = isGemini ? friendlyGeminiError(isQuotaError(e) && e?.status !== 429 ? quotaError(e, name) : e) : e;
-      return `✗ ${name}: ${aiErrorMessage(err)}`;
+      return `Lỗi: ${name}: ${aiErrorMessage(err)}`;
     }
   };
   const flash = await check("gemini-3-flash-preview");
-  if (flash.startsWith("✗")) return { ok: false, message: flash };
+  if (flash.startsWith("Lỗi:")) return { ok: false, message: flash };
   const pro = await check("gemini-3.1-pro-preview");
-  if (pro.startsWith("✗")) {
+  if (pro.startsWith("Lỗi:")) {
     return {
       ok: true,
       message: `${flash}\n${pro}\n→ Các tính năng dùng model mạnh (tra mã ngành, tư vấn AI) sẽ tự chuyển sang model thường.`,

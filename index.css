@@ -1,0 +1,48 @@
+/* Lớp nền chung của LegalBiz AI (màu lấy từ tailwind.config trong index.html) */
+:root {
+  --paper: #F6F7F4;
+  --ink: #12262B;
+  --brand: #0F5E63;
+  --seal: #B3261E;
+  color-scheme: light;
+}
+
+html, body {
+  background: var(--paper);
+  color: #12262B;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: "Be Vietnam Pro", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "tnum" 0;
+}
+
+/* Số liệu (ngày tháng, số giấy tờ, vốn) canh thẳng hàng */
+input, td { font-variant-numeric: tabular-nums; }
+
+::selection { background: #AED6D2; color: #0A2F33; }
+
+/* Viền focus rõ ràng khi dùng bàn phím */
+:focus-visible {
+  outline: 2px solid #0F5E63;
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+
+/* Thanh cuộn mảnh, cùng tông */
+.custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #D9E1DF; border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #859699; background-clip: content-box; border: 3px solid transparent; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+/* Tôn trọng thiết lập giảm chuyển động của người dùng */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
