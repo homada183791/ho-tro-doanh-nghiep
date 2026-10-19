@@ -1301,8 +1301,9 @@ const DocumentGenerator: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-6">
+      {/* Một cột: form trải hết bề ngang, phần kết quả + tải Excel nằm dưới cùng */}
+      <div className="space-y-8">
+        <div className="space-y-6">
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
              <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
@@ -2027,8 +2028,8 @@ const DocumentGenerator: React.FC = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-            <div className="sticky top-6">
+        <div className="space-y-6">
+            <div>
                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -2044,12 +2045,12 @@ const DocumentGenerator: React.FC = () => {
                     </div>
                     
                     {result ? (
-                        <div className="prose prose-slate max-w-none p-6 bg-slate-50 rounded-xl border border-slate-200 h-[600px] overflow-y-auto custom-scrollbar">
+                        <div className="prose prose-slate max-w-none p-6 bg-slate-50 rounded-xl border border-slate-200 max-h-[600px] overflow-y-auto custom-scrollbar">
                              <ReactMarkdown>{result}</ReactMarkdown>
                         </div>
                     ) : (
-                        <div className="h-[600px] bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
-                            <FileText className="w-16 h-16 mb-4 opacity-20" />
+                        <div className="py-10 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 text-center px-4">
+                            <FileText className="w-12 h-12 mb-3 opacity-20" />
                             <p>Điền thông tin và nhấn "Tạo Hồ Sơ" để xem trước và xuất Excel</p>
                         </div>
                     )}
