@@ -393,9 +393,9 @@ export const updateAdministrativeDivisions = async (
   detail: string,
   ward: string,
   city: string
-): Promise<{ detail: string; ward: string; city: string; updated: boolean; reason?: string }> => {
+): Promise<{ detail: string; ward: string; city: string; updated: boolean; needsCheck?: boolean; reason?: string }> => {
   const ai = getClient();
-  // Fix: Use gemini-3-flash-preview for geographic updates
+  // Model thường + tìm Google để tra Nghị quyết sáp nhập phường/xã
   const modelId = "gemini-3-flash-preview";
 
   // Data from PDF provided by user
@@ -428,38 +428,38 @@ export const updateAdministrativeDivisions = async (
   `;
 
   const prompt = `
-    Bạn là chuyên gia về địa lý hành chính Việt Nam.
-    Nhiệm vụ: Cập nhật và chuẩn hóa địa chỉ theo Quy hoạch sắp xếp đơn vị hành chính cấp tỉnh mới nhất (hiệu lực 01/07/2025).
+    Bạn là chuyên viên hành chính Việt Nam, nắm rõ việc sắp xếp đơn vị hành chính năm 2025:
+    - Từ 01/07/2025 cả nước còn 34 tỉnh/thành phố và BỎ cấp quận/huyện (chính quyền 2 cấp: tỉnh, xã).
+    - Phần lớn phường/xã được sáp nhập và đặt tên mới theo các Nghị quyết của Ủy ban Thường vụ Quốc hội.
 
-    Dữ liệu đầu vào:
-    - Detail: "${detail}"
-    - Ward: "${ward}"
-    - City: "${city}"
+    Địa chỉ cần chuyển đổi:
+    - Số nhà, đường, thôn/ấp/khu phố: "${detail}"
+    - Phường/Xã (có thể kèm Quận/Huyện cũ): "${ward}"
+    - Tỉnh/Thành phố: "${city}"
 
     ${provinceMapping}
 
-    YÊU CẦU XỬ LÝ:
-    1. QUAN TRỌNG NHẤT: Kiểm tra "City" (Tỉnh/Thành phố) đầu vào.
-       - Nếu thuộc danh sách "Cũ", hãy đổi tên sang "Tỉnh/Thành MỚI" tương ứng trong danh sách quy hoạch trên.
-       - Ví dụ: Input City="Bà Rịa - Vũng Tàu" -> Output City="Thành phố Hồ Chí Minh".
-       - Ví dụ: Input City="Hà Giang" -> Output City="Tuyên Quang".
-       - Ví dụ: Input City="Quảng Nam" -> Output City="Đà Nẵng".
-    
-    2. Nếu tên Tỉnh/Thành phố không thay đổi (hoặc đã đúng tên mới), giữ nguyên và chuẩn hóa (thêm tiền tố Tỉnh/Thành phố).
+    CÁCH LÀM:
+    1. Tỉnh/Thành phố: nếu thuộc danh sách "Cũ" thì đổi sang tỉnh/thành MỚI, ghi đủ tiền tố ("Tỉnh ...", "Thành phố ...").
+    2. Phường/Xã: dùng công cụ tìm kiếm tra Nghị quyết sắp xếp đơn vị hành chính cấp xã của tỉnh/thành mới,
+       xác định phường/xã cũ (thuộc quận/huyện cũ nếu có) nay thuộc phường/xã MỚI nào.
+       Ưu tiên nguồn chính thức: văn bản Nghị quyết trên thuvienphapluat.vn, chinhphu.vn, cổng thông tin của tỉnh.
+    3. Bỏ hẳn Quận/Huyện/Thị xã/Thành phố thuộc tỉnh khỏi kết quả (cấp này không còn).
+    4. Giữ nguyên số nhà, tên đường, thôn/ấp/khu phố trong "detail", chỉ sửa lỗi chính tả rõ ràng.
+    5. Nếu không chắc chắn (ví dụ một phường cũ bị chia về nhiều phường mới), giữ tên cũ, đặt "needsCheck": true
+       và ghi rõ lý do để người dùng tự kiểm tra. Tuyệt đối không bịa tên phường/xã.
+    6. Chỉ đặt "needsCheck": false khi kết quả tìm kiếm GHI RÕ phường/xã cũ "${ward}" được sắp xếp vào phường/xã mới đó
+       (nêu số Nghị quyết trong "reason"). Không tìm thấy văn bản nêu rõ thì "needsCheck": true.
+    7. Cẩn thận tên giống nhau ở quận/huyện khác nhau (ví dụ "Phường 2" có ở nhiều quận): phải đúng quận/huyện cũ đã ghi.
 
-    3. XỬ LÝ QUẬN/HUYỆN: 
-       - Nếu người dùng nhập Quận/Huyện trong trường "Ward" hoặc "City", hãy loại bỏ nó khỏi kết quả Output.
-       - Chỉ giữ lại Xã/Phường/Thị trấn trong "ward" and Tỉnh/TP trong "city".
-    
-    4. Bổ sung Google Search (Mô phỏng): Nếu phát hiện thay đổi về đơn vị hành chính cấp Xã/Phường (sáp nhập xã), hãy tự động cập nhật tên mới nếu bạn có kiến thức (nếu không giữ nguyên).
-
-    Output JSON format:
+    Chỉ trả về JSON:
     {
       "detail": "string",
-      "ward": "string (Tên Phường/Xã đầy đủ, KHÔNG có Quận/Huyện)",
-      "city": "string (Tên Tỉnh/TP MỚI đầy đủ theo quy hoạch 2025)",
-      "updated": boolean,
-      "reason": "string (Giải thích ngắn gọn: 'Sáp nhập [Tên cũ] vào [Tên mới] theo quy hoạch 2025' hoặc 'Đã chuẩn hóa địa chỉ')"
+      "ward": "Phường/Xã MỚI, đủ tiền tố, không kèm quận/huyện",
+      "city": "Tỉnh/Thành phố MỚI, đủ tiền tố",
+      "updated": true/false,
+      "needsCheck": true/false,
+      "reason": "Ví dụ: Phường A, Quận B cũ nay thuộc Phường C theo Nghị quyết số ..."
     }
   `;
 
@@ -476,17 +476,28 @@ export const updateAdministrativeDivisions = async (
             ward: { type: Type.STRING },
             city: { type: Type.STRING },
             updated: { type: Type.BOOLEAN },
+            needsCheck: { type: Type.BOOLEAN },
             reason: { type: Type.STRING }
           }
-        }
+        },
+        // Tra Nghị quyết sáp nhập phường/xã trên Google (chỉ có khi dùng Google Gemini)
+        tools: [{ googleSearch: {} }]
       }
     });
 
-    // Fix: Access .text property directly
     if (response.text) {
-      return JSON.parse(response.text);
+      const out = JSON.parse(response.text);
+      // Nguồn Google mà AI đã tra (nếu có) để người dùng đối chiếu
+      const chunks: any[] = (response as any).candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const nguon = chunks.map((c) => c?.web?.title || c?.web?.uri).filter(Boolean).slice(0, 3);
+      if (nguon.length) out.reason = `${out.reason || ''} (Nguồn: ${nguon.join('; ')})`.trim();
+      if ((response as any).noSearch) {
+        out.needsCheck = true;
+        out.reason = `${out.reason || ''} – AI chưa tra được Google (dịch vụ đang dùng không có tìm kiếm; nhập Gemini API key trong "Cài đặt API" để tra chính xác hơn).`.trim();
+      }
+      return out;
     }
-    throw new Error("Empty response");
+    throw new Error("AI không trả về kết quả. Vui lòng thử lại.");
   } catch (error) {
     console.error("Address update failed", error);
     throw error;
@@ -703,6 +714,9 @@ export const extractIdCardInfo = async (
        - QUAN TRỌNG: Loại bỏ tên Quận/Huyện khỏi các trường chi tiết.
 
     Nếu trường nào không tìm thấy trong tài liệu, trả về chuỗi rỗng.
+
+    HỌ TÊN: chép NGUYÊN VĂN từng chữ, đúng từng dấu như trên ảnh; KHÔNG sửa thành tên phổ biến hơn
+    (tên người Hoa, tên hiếm vẫn giữ nguyên, ví dụ "DƯ HUỆ QUÂN" không được đổi thành "ĐỖ HỮU QUÂN").
   `;
 
   const isPerson = mode === 'person';
@@ -798,6 +812,161 @@ export const extractIdCardInfo = async (
       throw e;
   }
 }
+
+/** Thông tin đọc được từ Giấy chứng nhận đăng ký doanh nghiệp. */
+export interface GpkdInfo {
+  enterpriseCode: string; firstRegDate: string; changeCount: string; lastChangeDate: string;
+  companyType: string; name: string; nameEn: string; nameAbbr: string;
+  addressDetail: string; addressWard: string; addressCity: string; addressCountry: string;
+  phone: string; email: string; website: string; capital: string; capitalInWords: string;
+  ownerType: string;
+  ownerName: string; ownerGender: string; ownerDob: string; ownerIdDocumentType: string; ownerIdNumber: string;
+  ownerIdDate: string; ownerIdPlace: string; ownerAddressDetail: string; ownerAddressWard: string; ownerAddressCity: string; ownerAddressCountry: string;
+  ownerOrgName: string; ownerOrgCode: string; ownerOrgIssueDate: string; ownerOrgAddressDetail: string; ownerOrgAddressWard: string; ownerOrgAddressCity: string;
+  repName: string; repGender: string; repTitle: string; repDob: string; repIdDocumentType: string; repIdNumber: string;
+  repIdDate: string; repIdPlace: string; repAddressDetail: string; repAddressWard: string; repAddressCity: string; repAddressCountry: string;
+}
+
+const GPKD_FIELDS: (keyof GpkdInfo)[] = [
+  'enterpriseCode','firstRegDate','changeCount','lastChangeDate','companyType','name','nameEn','nameAbbr',
+  'addressDetail','addressWard','addressCity','addressCountry','phone','email','website','capital','capitalInWords','ownerType',
+  'ownerName','ownerGender','ownerDob','ownerIdDocumentType','ownerIdNumber','ownerIdDate','ownerIdPlace',
+  'ownerAddressDetail','ownerAddressWard','ownerAddressCity','ownerAddressCountry',
+  'ownerOrgName','ownerOrgCode','ownerOrgIssueDate','ownerOrgAddressDetail','ownerOrgAddressWard','ownerOrgAddressCity',
+  'repName','repGender','repTitle','repDob','repIdDocumentType','repIdNumber','repIdDate','repIdPlace',
+  'repAddressDetail','repAddressWard','repAddressCity','repAddressCountry',
+];
+
+/**
+ * Rút trích Giấy chứng nhận đăng ký doanh nghiệp (ảnh hoặc PDF, có thể nhiều trang).
+ * Giữ nguyên nội dung như trên giấy (kể cả quận/huyện cũ) vì đây là thông tin đã đăng ký.
+ */
+export const extractBusinessLicense = async (files: { base64: string; mimeType: string }[]): Promise<GpkdInfo> => {
+  if (!files.length) throw new Error("Chưa có ảnh/PDF Giấy chứng nhận đăng ký doanh nghiệp.");
+  const ai = getClient();
+  const modelId = "gemini-3-flash-preview";
+  const prompt = `
+    Đây là Giấy chứng nhận đăng ký doanh nghiệp của Việt Nam, hoặc giấy tờ cùng nội dung như "Thông báo về việc thay đổi nội dung đăng ký doanh nghiệp",
+    "Giấy xác nhận về việc thay đổi nội dung đăng ký doanh nghiệp", bản cung cấp thông tin đăng ký doanh nghiệp (có thể gồm nhiều trang/ảnh, đọc gộp tất cả).
+    Nếu giấy có cả "Khối thông tin cũ" và "Khối thông tin mới" thì lấy theo KHỐI THÔNG TIN MỚI.
+    Trích xuất CHÍNH XÁC như trên giấy, không suy đoán, không sửa đổi theo quy định mới:
+
+    - enterpriseCode: Mã số doanh nghiệp (chỉ chữ số).
+    - firstRegDate: ngày "Đăng ký lần đầu" (DD/MM/YYYY).
+    - changeCount: số lần ở dòng "Đăng ký thay đổi lần thứ ..." (chỉ số, ví dụ "4"); chưa thay đổi thì để trống.
+    - lastChangeDate: ngày ở dòng "Đăng ký thay đổi lần thứ ..." (DD/MM/YYYY).
+    - companyType: loại hình ghi ở tiêu đề (ví dụ "Công ty trách nhiệm hữu hạn một thành viên").
+    - name / nameEn / nameAbbr: tên tiếng Việt (IN HOA), tên tiếng nước ngoài, tên viết tắt.
+    - Địa chỉ trụ sở chính: addressDetail (số nhà, đường), addressWard (phường/xã, NẾU giấy có ghi quận/huyện thì GIỮ LẠI, ví dụ "Phường 17, Quận Bình Thạnh"),
+      addressCity (tỉnh/thành phố), addressCountry.
+    - phone, email, website. capital: vốn điều lệ dạng số có dấu chấm (ví dụ "3.000.000.000"); capitalInWords: phần "Bằng chữ".
+    - ownerType: "individual" nếu chủ sở hữu là cá nhân, "organization" nếu là tổ chức.
+    - Chủ sở hữu cá nhân: ownerName (IN HOA), ownerGender, ownerDob, ownerIdDocumentType (ví dụ "Thẻ căn cước công dân"), ownerIdNumber, ownerIdDate, ownerIdPlace,
+      ownerAddress* lấy theo "Địa chỉ liên lạc" (nếu không có thì theo địa chỉ thường trú), giữ quận/huyện nếu có trong addressWard.
+    - Chủ sở hữu tổ chức: ownerOrgName, ownerOrgCode (mã số doanh nghiệp/quyết định), ownerOrgIssueDate, ownerOrgAddress*.
+    - Người đại diện theo pháp luật: repName (IN HOA), repGender, repTitle (chức danh), repDob, repIdDocumentType, repIdNumber, repIdDate, repIdPlace,
+      repAddress* theo "Địa chỉ liên lạc", giữ quận/huyện nếu có.
+    Mọi ngày tháng ghi DD/MM/YYYY. Trường nào không có trên giấy thì để chuỗi rỗng.
+
+    QUY TẮC ĐỌC HỌ TÊN (rất quan trọng):
+    - Chép NGUYÊN VĂN từng chữ, đúng từng dấu như trên ảnh. KHÔNG sửa thành tên phổ biến hơn
+      (ví dụ "DƯ HUỆ QUÂN" phải giữ đúng "DƯ HUỆ QUÂN", không được đổi thành "ĐỖ HỮU QUÂN" hay "DƯ HỮU QUÂN").
+      Tên người dân tộc Hoa, tên hiếm, tên ghép lạ vẫn giữ nguyên.
+    - Đối chiếu với giới tính ghi trên giấy, nhưng không tự đổi chữ để "hợp" giới tính.
+    - Giấy KHÔNG có mục "Thông tin về chủ sở hữu" (ví dụ bản Công bố/Thông báo thay đổi chỉ có người đại diện) thì để trống
+      mọi trường owner*, ownerType; KHÔNG lấy người đại diện điền sang chủ sở hữu.
+  `;
+  const parts: any[] = [{ text: prompt }];
+  files.forEach((f, i) => {
+    parts.push({ inlineData: { data: f.base64, mimeType: f.mimeType } });
+    parts.push({ text: `Trang ${i + 1}` });
+  });
+  const properties: Record<string, any> = {};
+  for (const k of GPKD_FIELDS) properties[k] = { type: Type.STRING };
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts },
+      config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties } },
+    });
+    if (!response.text) throw new Error("AI không trả về kết quả. Vui lòng thử lại.");
+    const raw = JSON.parse(response.text);
+    console.log("[AI] Kết quả rút trích GPKD:", raw);
+    const out = {} as GpkdInfo;
+    for (const k of GPKD_FIELDS) out[k] = cleanValue(raw?.[k]);
+    out.enterpriseCode = out.enterpriseCode.replace(/\s/g, '');
+    out.changeCount = out.changeCount.replace(/\D/g, '');
+    out.ownerType = /org|tổ chức/i.test(out.ownerType) ? 'organization' : out.ownerType ? 'individual' : '';
+    return out;
+  } catch (e) {
+    console.error("GPKD extraction failed", e);
+    throw e;
+  }
+};
+
+/** Đọc địa chỉ bất động sản/trụ sở từ giấy tờ (hợp đồng thuê, giấy chứng nhận quyền sử dụng đất...). Giữ nguyên như trên giấy. */
+export const extractAddressFromDoc = async (files: { base64: string; mimeType: string }[]): Promise<{ detail: string; ward: string; city: string }> => {
+  if (!files.length) throw new Error("Chưa có ảnh/PDF giấy tờ địa chỉ.");
+  const ai = getClient();
+  const prompt = `
+    Đây là giấy tờ về địa điểm đặt trụ sở (hợp đồng thuê/mượn nhà, giấy chứng nhận quyền sử dụng đất, văn bản đồng ý cho đặt trụ sở...).
+    Tìm ĐỊA CHỈ CỦA CĂN NHÀ/MẶT BẰNG được thuê/mượn/sở hữu (không lấy địa chỉ thường trú của các bên).
+    Trả về đúng như ghi trên giấy:
+    - detail: số nhà/phòng, hẻm/ngõ, đường/phố, tổ/ấp/thôn
+    - ward: phường/xã (nếu giấy ghi kèm quận/huyện/thị xã thì GIỮ LẠI, ví dụ "Phường 17, Quận Bình Thạnh")
+    - city: tỉnh/thành phố
+    Không có thì để chuỗi rỗng.
+  `;
+  const parts: any[] = [{ text: prompt }];
+  files.forEach((f, i) => { parts.push({ inlineData: { data: f.base64, mimeType: f.mimeType } }); parts.push({ text: `Trang ${i + 1}` }); });
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: { parts },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: { type: Type.OBJECT, properties: { detail: { type: Type.STRING }, ward: { type: Type.STRING }, city: { type: Type.STRING } } },
+    },
+  });
+  if (!response.text) throw new Error("AI không trả về kết quả. Vui lòng thử lại.");
+  const raw = JSON.parse(response.text);
+  return { detail: cleanValue(raw?.detail), ward: cleanValue(raw?.ward), city: cleanValue(raw?.city) };
+};
+
+/** Đọc địa chỉ + liên lạc từ một đoạn văn bản người dùng dán vào (tin nhắn, email...). */
+export const extractAddressFromText = async (text: string): Promise<{ detail: string; ward: string; city: string; phone: string; email: string; website: string }> => {
+  if (!text.trim()) throw new Error("Chưa có nội dung để đọc.");
+  const ai = getClient();
+  const prompt = `
+    Đoạn văn sau có thông tin địa chỉ trụ sở doanh nghiệp (có thể kèm điện thoại, email, website):
+    """${text}"""
+    Tách ra:
+    - detail: số nhà/phòng, ngách/hẻm, ngõ/kiệt, đường/phố/đại lộ, tổ/xóm/ấp/thôn/khu phố
+    - ward: xã/phường/đặc khu (nếu đoạn văn ghi kèm quận/huyện thì GIỮ LẠI, ví dụ "Phường 22, Quận Bình Thạnh")
+    - city: tỉnh/thành phố
+    - phone, email, website (nếu có)
+    Chỉ lấy đúng như trong đoạn văn, không tự suy đoán. Không có thì để chuỗi rỗng.
+  `;
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          detail: { type: Type.STRING }, ward: { type: Type.STRING }, city: { type: Type.STRING },
+          phone: { type: Type.STRING }, email: { type: Type.STRING }, website: { type: Type.STRING },
+        },
+      },
+    },
+  });
+  if (!response.text) throw new Error("AI không trả về kết quả. Vui lòng thử lại.");
+  const raw = JSON.parse(response.text);
+  return {
+    detail: cleanValue(raw?.detail), ward: cleanValue(raw?.ward), city: cleanValue(raw?.city),
+    phone: cleanValue(raw?.phone), email: cleanValue(raw?.email), website: cleanValue(raw?.website),
+  };
+};
 
 /**
  * Generates a legal document based on business info and an optional uploaded sample.

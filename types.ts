@@ -15,6 +15,12 @@ export interface IdCardImages {
 }
 
 export interface BusinessInfo {
+  // Thông tin trên Giấy chứng nhận đăng ký doanh nghiệp (dùng cho hồ sơ thay đổi)
+  enterpriseCode?: string;   // Mã số doanh nghiệp
+  firstRegDate?: string;     // Ngày đăng ký lần đầu (DD/MM/YYYY)
+  changeCount?: string;      // Đăng ký thay đổi lần thứ
+  lastChangeDate?: string;   // Ngày đăng ký thay đổi gần nhất (DD/MM/YYYY)
+
   registrationOffice: string; // Cơ quan đăng ký kinh doanh (Kính gửi)
   name: string;
   nameEn: string;   // Tên tiếng Anh

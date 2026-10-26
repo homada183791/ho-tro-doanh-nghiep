@@ -170,7 +170,7 @@ const buildChatBody = (model: string, msgs: Msg[], fmt: JsonFormat) => {
 const readChat = (data: any): string => data.choices?.[0]?.message?.content ?? "";
 
 // ---------- Responses API ----------
-const buildResponsesBody = (model: string, msgs: Msg[], fmt: JsonFormat) => {
+const buildResponsesBody = (model: string, msgs: Msg[], fmt: JsonFormat, webSearch = false) => {
   // Hướng dẫn hệ thống gửi dạng tin nhắn "developer" vì một số dịch vụ trung gian ghi đè trường instructions.
   const input = msgs
     .map((m) => ({
@@ -183,6 +183,8 @@ const buildResponsesBody = (model: string, msgs: Msg[], fmt: JsonFormat) => {
       }),
     }));
   const body: any = { model, input, store: false };
+  // Công cụ tìm kiếm web của OpenAI (Responses API) – dùng cho việc cần tra cứu như địa chỉ sau sáp nhập
+  if (webSearch) body.tools = [{ type: "web_search" }];
   const reasoning = cfg().reasoning;
   if (reasoning) body.reasoning = { effort: reasoning };
   if (fmt?.mode === "json_schema") {
@@ -283,10 +285,10 @@ const withQuota = async <T>(model: string, fn: () => Promise<T>): Promise<T> => 
 };
 
 // ---------- Gửi yêu cầu ----------
-const callAI = (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> =>
-  withQuota(model, () => callAIOnce(model, msgs, fmt));
+const callAI = (model: string, msgs: Msg[], fmt: JsonFormat, webSearch = false): Promise<string> =>
+  withQuota(model, () => callAIOnce(model, msgs, fmt, webSearch));
 
-const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<string> => {
+const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat, webSearch = false): Promise<string> => {
   const s = cfg();
   const managed = isServerMode();
   const API_KEY = s.apiKey.trim();
@@ -298,22 +300,42 @@ const callAIOnce = async (model: string, msgs: Msg[], fmt: JsonFormat): Promise<
       : "Chưa có API key. Bấm \"Cài đặt API\" ở thanh bên trái để nhập.");
   }
   const endpoint = WIRE === "responses" ? "/responses" : "/chat/completions";
-  const body = WIRE === "responses" ? buildResponsesBody(model, msgs, fmt) : buildChatBody(model, msgs, fmt);
+  const body = WIRE === "responses" ? buildResponsesBody(model, msgs, fmt, webSearch) : buildChatBody(model, msgs, fmt);
   // Khi chạy npm run dev: gửi qua proxy của Vite (/ai-api) để tránh lỗi CORS; proxy đọc địa chỉ đích từ header.
   // Máy chủ quản lý key: luôn gửi qua máy chủ, không kèm key (máy chủ tự gắn).
   const url = managed || env.DEV ? `/ai-api${endpoint}` : `${BASE_URL}${endpoint}`;
   const devHeaders: Record<string, string> = !managed && env.DEV ? { "x-ai-target": BASE_URL } : {};
   let res: Response;
+  const send = () => fetch(url, {
+    method: "POST",
+    headers: managed
+      ? { "Content-Type": "application/json" }
+      : { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...headersOf(s), ...devHeaders },
+    body: JSON.stringify(body),
+  });
+  const t0 = Date.now();
   try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: managed
-        ? { "Content-Type": "application/json" }
-        : { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}`, ...headersOf(s), ...devHeaders },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    throw new Error(`Không kết nối được tới ${BASE_URL}. Kiểm tra địa chỉ API trong "Cài đặt API" và mạng Internet.`);
+    res = await send();
+  } catch {
+    // Thử lại 1 lần (mạng chập chờn), nếu vẫn lỗi thì kiểm tra xem còn kết nối được tới máy chủ web không
+    try {
+      res = await send();
+    } catch (e2: any) {
+      const giay = Math.round((Date.now() - t0) / 1000);
+      let webOk = false;
+      if (url.startsWith("/")) {
+        try { webOk = (await fetch("/__ai/config", { cache: "no-store" })).ok; } catch { webOk = false; }
+      }
+      if (url.startsWith("/") && !webOk) {
+        throw new Error("Mất kết nối với máy chủ web LegalBiz (cửa sổ \"LegalBiz Server\" đã tắt, máy chủ bị ngủ hoặc link public đã đổi). Mở lại web rồi thử lại.");
+      }
+      throw new Error(
+        `Không kết nối được tới ${BASE_URL} (sau ${giay} giây; ${e2?.message || "lỗi mạng"}). ` +
+        (url.startsWith("/")
+          ? "Máy chủ web vẫn chạy: xem dòng [ai-proxy] trong cửa sổ \"LegalBiz Server\" để biết lý do; nếu yêu cầu chạy lâu hơn 100 giây qua link public thì thử mở web bằng http://localhost:3000 trên máy chủ."
+          : "Kiểm tra địa chỉ API trong \"Cài đặt API\" và mạng Internet.")
+      );
+    }
   }
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 400);
@@ -343,7 +365,7 @@ const isMediaRejected = (e: any) =>
   e?.status === 400 &&
   /must be a string|image_url|input_image|file_data|input_file|image input|does not support image|vision|multimodal|unsupported content|content type/i.test(errText(e));
 
-const generateContent = async ({ model, contents, config = {} }: { model?: string; contents: Contents; config?: any }) => {
+const generateContent = async ({ model, contents, config = {}, webSearch = false }: { model?: string; contents: Contents; config?: any; webSearch?: boolean }) => {
   const msgs: Msg[] = [];
   if (config.systemInstruction) msgs.push({ role: "system", items: [{ kind: "text", text: config.systemInstruction }] });
   msgs.push({ role: "user", items: toItems(contents) });
@@ -359,12 +381,12 @@ const generateContent = async ({ model, contents, config = {} }: { model?: strin
     : null;
 
   const run = () => {
-    if (!wantsJson) return callAI(resolveModel(model), msgs, null);
-    if (schema && jsonModeOf(cfg()) === "json_schema") return callAI(resolveModel(model), msgs, { mode: "json_schema", schema });
+    if (!wantsJson) return callAI(resolveModel(model), msgs, null, webSearch);
+    if (schema && jsonModeOf(cfg()) === "json_schema") return callAI(resolveModel(model), msgs, { mode: "json_schema", schema }, webSearch);
     const hint = schema
       ? `Chỉ trả về JSON hợp lệ theo JSON Schema sau, không kèm giải thích:\n${JSON.stringify(schema)}`
       : "Chỉ trả về JSON hợp lệ, không kèm giải thích.";
-    return callAI(resolveModel(model), [...msgs, { role: "system", items: [{ kind: "text", text: hint }] }], { mode: "json_object" });
+    return callAI(resolveModel(model), [...msgs, { role: "system", items: [{ kind: "text", text: hint }] }], { mode: "json_object" }, webSearch);
   };
 
   let text: string;
@@ -566,7 +588,34 @@ export const aiErrorMessage = (e: any): string => {
  * Chế độ chuẩn OpenAI: nếu yêu cầu có ảnh/PDF (đọc CCCD, giấy tờ) mà dịch vụ chỉ nhận chữ,
  * tự chuyển yêu cầu đó sang Gemini khi đã nhập Gemini API key; nếu chưa có thì báo rõ cách khắc phục.
  */
-const generateContentOpenAI = async (args: { model?: string; contents: any; config?: any }): Promise<{ text: string; candidates?: any }> => {
+const generateContentOpenAI = async (args: { model?: string; contents: any; config?: any }): Promise<{ text: string; candidates?: any; noSearch?: boolean }> => {
+  // Yêu cầu cần tìm kiếm web (vd tra Nghị quyết sáp nhập phường/xã): ưu tiên ChatGPT + web_search,
+  // rồi tới Gemini + Google Search (nếu có key), cuối cùng tra không tìm kiếm và đánh dấu noSearch để cảnh báo.
+  const needsSearch = Array.isArray(args.config?.tools) && args.config.tools.some((t: any) => t?.googleSearch);
+  if (needsSearch) {
+    const { tools, ...rest } = args.config;
+    // 1) Chính dịch vụ đang chọn (ChatGPT qua Responses API) với công cụ web_search của OpenAI
+    if (cfg().wire === "responses") {
+      try {
+        return await generateContent({ ...args, config: rest, webSearch: true });
+      } catch (e: any) {
+        if (e?.status !== 400) throw e;
+        console.warn("[AI] Dịch vụ không hỗ trợ công cụ web_search.", e);
+      }
+    }
+    // 2) Gemini có Google Search nếu có key
+    if (cfg().geminiKey.trim()) {
+      try {
+        console.log("[AI] Tra cứu bằng Gemini (Google Search).");
+        return await createGeminiClient().models.generateContent(args);
+      } catch (e: any) {
+        console.warn("[AI] Gemini không dùng được (hết hạn mức/lỗi), tra bằng ChatGPT không có tìm kiếm.", e);
+      }
+    }
+    // 3) ChatGPT không có tìm kiếm
+    const r = await generateContent({ ...args, config: rest });
+    return { ...r, noSearch: true };
+  }
   try {
     return await generateContent(args);
   } catch (e: any) {

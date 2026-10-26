@@ -52,14 +52,29 @@ const maskKey = (k: string) => (!k ? '' : k.length <= 10 ? '•'.repeat(k.length
 /** Gửi tiếp yêu cầu tới máy chủ AI thật (dùng http/https của Node, chạy ổn định trên Windows). */
 const forward = (req: http.IncomingMessage, res: http.ServerResponse, target: URL, headers: Record<string, string>) => {
   headers['host'] = target.host;
+  // Header thêm (từ Cài đặt API) phải là chữ ASCII một dòng; bỏ header sai để không làm sập yêu cầu
+  for (const [k, v] of Object.entries(headers)) {
+    const val = String(v ?? '');
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(k) || /[^\t\x20-\x7e]/.test(val)) {
+      console.warn('[ai-proxy] Bỏ header không hợp lệ:', k);
+      delete headers[k];
+    } else headers[k] = val;
+  }
   const lib = target.protocol === 'https:' ? https : http;
-  const upstream = lib.request(target, { method: req.method, headers, timeout: 300_000 }, (up) => {
+  let upstream: http.ClientRequest;
+  try {
+  // autoSelectFamily: thử song song IPv4/IPv6, tránh treo khi mạng IPv6 hỏng
+  upstream = lib.request(target, { method: req.method, headers, timeout: 300_000, autoSelectFamily: true } as any, (up) => {
     res.statusCode = up.statusCode || 502;
     for (const [k, v] of Object.entries(up.headers)) {
       if (v !== undefined && !['connection', 'transfer-encoding'].includes(k)) res.setHeader(k, v as any);
     }
     up.pipe(res);
   });
+  } catch (e: any) {
+    console.error('[ai-proxy]', target.host, e?.code || e);
+    return sendText(res, 500, `Máy chủ không tạo được yêu cầu tới ${target.host}: ${e?.message || e}`);
+  }
   upstream.on('timeout', () => upstream.destroy(Object.assign(new Error('Quá thời gian chờ (5 phút)'), { code: 'ETIMEDOUT' })));
   upstream.on('error', (e: any) => {
     console.error('[ai-proxy]', target.host, e?.code || e);
@@ -75,6 +90,8 @@ const forward = (req: http.IncomingMessage, res: http.ServerResponse, target: UR
     res.end(`Proxy không kết nối được tới ${target.host}: ${e?.code || ''} ${e?.message || e}${hint}`);
   });
   req.pipe(upstream);
+  // Trình duyệt đóng kết nối (tắt tab, mất mạng): huỷ yêu cầu lên dịch vụ AI
+  res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
 };
 
 const sendText = (res: http.ServerResponse, status: number, text: string) => {

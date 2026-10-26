@@ -48,6 +48,49 @@ const warnIfEmpty = (extracted: Record<string, any>, mode: 'person' | 'organizat
 import { Upload, FileType, CheckCircle, Loader2, Download, Copy, FileText, Sparkles, ArrowLeft, PlusCircle, FilePenLine, Calendar, User, Users, PieChart, Briefcase, Store, IdCard, MapPin, Building2, UserCircle2, RefreshCw, Search, BookOpen, Globe, Mail, Phone, Landmark, Keyboard, Image as ImageIcon, ScanLine, Link, FileSpreadsheet, ExternalLink, Receipt, Files, Crown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import * as XLSX from 'xlsx';
+import { GpkdExtractor, ChangeCases } from './ChangeRequest';
+import { tinhMoi, coQuanDangKy } from '../services/tinhThanh';
+import { filesThanhAnh } from '../services/pdfAnh';
+import { emptyChange, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
+import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_KEM_THAY_DOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Hiển thị tóm tắt hồ sơ: các dòng bắt đầu bằng "|" được vẽ thành bảng, phần còn lại dùng Markdown. */
+const SummaryView: React.FC<{ text: string }> = ({ text }) => {
+  const blocks: { type: 'md' | 'table'; lines: string[] }[] = [];
+  for (const line of text.split('\n')) {
+    const type = line.trim().startsWith('|') ? 'table' : 'md';
+    const last = blocks[blocks.length - 1];
+    if (last && last.type === type) last.lines.push(line);
+    else blocks.push({ type, lines: [line] });
+  }
+  const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const bold = (c: string) => c.replace(/\*\*/g, '');
+  return (
+    <>
+      {blocks.map((b, i) => {
+        if (b.type === 'md') return <ReactMarkdown key={i}>{b.lines.join('\n')}</ReactMarkdown>;
+        const rows = b.lines.filter(l => !/^\s*\|?\s*:?-{2,}/.test(l)).map(cells);
+        const [head, ...body] = rows;
+        return (
+          <table key={i} className="w-full text-sm border-collapse my-3 not-prose">
+            <thead>
+              <tr>{head.map((c, j) => <th key={j} className="text-left font-semibold text-slate-600 border-b border-slate-300 py-2 pr-4">{bold(c)}</th>)}</tr>
+            </thead>
+            <tbody>
+              {body.map((r, k) => (
+                <tr key={k} className="border-b border-slate-200 align-top">
+                  {r.map((c, j) => <td key={j} className={`py-2 pr-4 ${j === 0 ? 'font-medium text-slate-700 whitespace-nowrap' : 'text-slate-900'}`}>{bold(c)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      })}
+    </>
+  );
+};
 
 type TaskType = 'new' | 'change';
 type Step = 'task' | 'type' | 'form';
@@ -208,6 +251,11 @@ const DocumentGenerator: React.FC = () => {
   const [sampleFile, setSampleFile] = useState<{ name: string; base64: string; mimeType: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [change, setChange] = useState<ChangeData>(emptyChange);
+  // Hồ sơ Word đã trộn (Giấy đề nghị, Điều lệ)
+  const [wordFiles, setWordFiles] = useState<FileHoSo[] | null>(null);
+  const [wordBusy, setWordBusy] = useState(false);
+  const [wordError, setWordError] = useState<string | null>(null);
 
   const businessTypes = [
     { id: 'Công ty TNHH 1 Thành viên', label: 'Công ty TNHH 1 Thành viên', icon: User, desc: 'Do 1 cá nhân hoặc tổ chức làm chủ sở hữu.' },
@@ -285,30 +333,22 @@ const DocumentGenerator: React.FC = () => {
       info.beneficialOwnerType, info.ownerType
   ]);
 
-  // Logic Tự động chọn Cơ quan ĐKKD dựa trên Tỉnh/Thành phố trụ sở
+  // Tự động chọn Cơ quan ĐKKD theo tỉnh/thành MỚI của trụ sở (tên tỉnh cũ như "Long An" được quy về "Tây Ninh").
+  // Hồ sơ thay đổi: lấy địa chỉ sau thay đổi (Mục A), hoặc địa chỉ cập nhật (Mục B), nếu không thì địa chỉ trên GPKD.
+  const thanhPhoTruSo = (taskType === 'change' && info.type === 'Công ty TNHH 1 Thành viên')
+    ? ((change.cases.diaChi && change.newAddressCity) || (change.cases.capNhat && change.cnTruSo && change.cnTsCity) || info.addressCity)
+    : info.addressCity;
   useEffect(() => {
-    if (info.addressCity) {
+    const tinh = tinhMoi(thanhPhoTruSo || '');
+    if (!tinh) return;
+    const office = coQuanDangKy(tinh, REGISTRATION_OFFICES);
+    if (office && office !== info.registrationOffice) {
         setIsAutoSyncingOffice(true);
-        const city = info.addressCity.trim();
-        const normalizedCity = city
-            .replace(/^(Tỉnh|Thành phố|TP\.|TP|Thành Phố|T\.)\s+/i, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-        
-        if (normalizedCity) {
-            const matchedOffice = REGISTRATION_OFFICES.find(office => {
-                const officeClean = office.toLowerCase();
-                const cityLower = normalizedCity.toLowerCase();
-                return officeClean.includes(cityLower);
-            });
-            
-            if (matchedOffice && matchedOffice !== info.registrationOffice) {
-                setInfo(prev => ({ ...prev, registrationOffice: matchedOffice }));
-            }
-        }
+        setInfo(prev => ({ ...prev, registrationOffice: office }));
         setTimeout(() => setIsAutoSyncingOffice(false), 500);
     }
-  }, [info.addressCity]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thanhPhoTruSo]);
 
   const toggleHQ = (field: 'owner' | 'rep' | 'tax', value: boolean) => {
      setUseHQAddress(prev => ({ ...prev, [field]: value }));
@@ -352,19 +392,9 @@ const DocumentGenerator: React.FC = () => {
   const handleIdCardUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'ownerIdCard' | 'repIdCard', side: 'front' | 'back') => {
     const files = e.target.files;
     if (files && files.length > 0) {
-        const filePromises = Array.from(files).map((file: File) => {
-            return new Promise<{ base64: string, mimeType: string }>((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64String = reader.result as string;
-                    const base64Data = base64String.split(',')[1];
-                    resolve({ base64: base64Data, mimeType: file.type });
-                };
-                reader.readAsDataURL(file);
-            });
-        });
-
-        Promise.all(filePromises).then(async (uploadedImages) => {
+        // PDF được đổi thành ảnh từng trang trước khi gửi AI (tránh lớp chữ PDF bị lỗi mã làm AI đọc sai tên)
+        filesThanhAnh(Array.from(files)).then(async (anh) => {
+            const uploadedImages = anh.map(({ base64, mimeType }) => ({ base64, mimeType }));
             // If multiple files (e.g., Auth Rep ID Front+Back), use the first one for visual 'back' preview, but store all in extras
             const primaryImage = uploadedImages[0];
             const extraImages = uploadedImages.length > 1 ? uploadedImages : (files.length > 0 ? [primaryImage] : []);
@@ -598,8 +628,8 @@ const DocumentGenerator: React.FC = () => {
         currentWard = info.repAddressWard;
         currentCity = info.repAddressCity;
     } else if (fieldPrefix === 'tax') {
-        currentWard = info.taxAddressWard;
-        currentCity = info.taxAddressCity;
+        currentWard = info.taxAddressWard || '';
+        currentCity = info.taxAddressCity || '';
     }
 
     if (!currentWard) {
@@ -771,28 +801,24 @@ const DocumentGenerator: React.FC = () => {
       );
   };
 
-  const handleAddressUpdate = async (fieldPrefix: string) => {
-    let currentDetail = '';
-    let currentWard = '';
-    let currentCity = '';
+  /** Các khối địa chỉ trên form: [số nhà/đường, phường/xã, tỉnh/thành]. */
+  const ADDRESS_FIELDS: Record<string, [keyof BusinessInfo, keyof BusinessInfo, keyof BusinessInfo]> = {
+    hq: ['addressDetail', 'addressWard', 'addressCity'],
+    owner: ['ownerAddressDetail', 'ownerAddressWard', 'ownerAddressCity'],
+    rep: ['repAddressDetail', 'repAddressWard', 'repAddressCity'],
+    tax: ['taxAddressDetail', 'taxAddressWard', 'taxAddressCity'],
+    org: ['ownerOrgAddressDetail', 'ownerOrgAddressWard', 'ownerOrgAddressCity'],
+    bo: ['beneficialOwnerAddressDetail', 'beneficialOwnerAddressWard', 'beneficialOwnerAddressCity'],
+  };
 
-    if (fieldPrefix === 'hq') {
-        currentDetail = info.addressDetail;
-        currentWard = info.addressWard;
-        currentCity = info.addressCity;
-    } else if (fieldPrefix === 'owner') {
-        currentDetail = info.ownerAddressDetail;
-        currentWard = info.ownerAddressWard;
-        currentCity = info.ownerAddressCity;
-    } else if (fieldPrefix === 'rep') {
-        currentDetail = info.repAddressDetail;
-        currentWard = info.repAddressWard;
-        currentCity = info.repAddressCity;
-    } else if (fieldPrefix === 'tax') {
-        currentDetail = info.taxAddressDetail;
-        currentWard = info.taxAddressWard;
-        currentCity = info.taxAddressCity;
-    }
+  /** Cập nhật địa chỉ theo đơn vị hành chính mới (sau sắp xếp 2025) bằng AI. */
+  const handleAddressUpdate = async (fieldPrefix: string) => {
+    const keys = ADDRESS_FIELDS[fieldPrefix];
+    if (!keys) return;
+    const [kDetail, kWard, kCity] = keys;
+    const currentDetail = String(info[kDetail] || '');
+    const currentWard = String(info[kWard] || '');
+    const currentCity = String(info[kCity] || '');
 
     if (!currentWard && !currentCity) {
         alert("Vui lòng nhập địa chỉ trước khi cập nhật.");
@@ -803,29 +829,15 @@ const DocumentGenerator: React.FC = () => {
     try {
         const result = await updateAdministrativeDivisions(currentDetail, currentWard, currentCity);
         if (result.updated) {
-             setInfo(prev => {
-                const next = { ...prev };
-                if (fieldPrefix === 'hq') {
-                    next.addressDetail = result.detail;
-                    next.addressWard = result.ward;
-                    next.addressCity = result.city;
-                } else if (fieldPrefix === 'owner') {
-                    next.ownerAddressDetail = result.detail;
-                    next.ownerAddressWard = result.ward;
-                    next.ownerAddressCity = result.city;
-                } else if (fieldPrefix === 'rep') {
-                    next.repAddressDetail = result.detail;
-                    next.repAddressWard = result.ward;
-                    next.repAddressCity = result.city;
-                 } else if (fieldPrefix === 'tax') {
-                    next.taxAddressDetail = result.detail;
-                    next.taxAddressWard = result.ward;
-                    next.taxAddressCity = result.city;
-                 }
-                 return next;
-             });
+             setInfo(prev => ({ ...prev, [kDetail]: result.detail || currentDetail, [kWard]: result.ward, [kCity]: result.city }));
+             const newAddress = [result.detail, result.ward, result.city].filter(Boolean).join(', ');
+             alert(result.needsCheck
+               ? `Đã cập nhật nhưng CẦN KIỂM TRA LẠI:\n${newAddress}\n\n${result.reason || ''}`
+               : `Đã cập nhật địa chỉ mới:\n${newAddress}\n\n${result.reason || ''}`);
         } else {
-             alert("Địa chỉ không thay đổi so với quy hoạch mới.");
+             alert(result.needsCheck
+               ? `Chưa xác định chắc chắn được phường/xã mới, vui lòng kiểm tra lại.\n\n${result.reason || ''}`
+               : `Địa chỉ không thay đổi so với quy hoạch mới.${result.reason ? `\n\n${result.reason}` : ''}`);
         }
     } catch (e) {
         showAiError("Có lỗi khi kiểm tra địa chỉ.", e);
@@ -833,6 +845,16 @@ const DocumentGenerator: React.FC = () => {
         setUpdatingAddress(prev => ({ ...prev, [fieldPrefix]: false }));
     }
   };
+
+  /** Nút "Cập nhật địa chỉ mới" dùng chung cho các khối địa chỉ. */
+  const AddressAIButton = ({ prefix }: { prefix: string }) => (
+    <button type="button" onClick={() => handleAddressUpdate(prefix)} disabled={updatingAddress[prefix]}
+        title="AI đổi địa chỉ sang đơn vị hành chính mới (34 tỉnh/thành, bỏ cấp quận/huyện)"
+        className="flex items-center gap-1 text-[11px] text-blue-700 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition disabled:opacity-60">
+        {updatingAddress[prefix] ? <Loader2 className="w-3 h-3 animate-spin"/> : <RefreshCw className="w-3 h-3" />}
+        Cập nhật địa chỉ mới (AI)
+    </button>
+  );
 
   const handleLookupIndustry = async () => {
      if (!info.industry.trim() && !info.subIndustries.trim()) {
@@ -925,9 +947,14 @@ const DocumentGenerator: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!taskType) return;
+    if (isChangeTNHH1) {
+      const errs = kiemTraThayDoi(change, info);
+      if (errs.length) { alert('Còn thiếu thông tin:\n- ' + errs.join('\n- ')); return; }
+    }
     setLoading(true);
     setResult(null);
     try {
+      if (isChangeTNHH1) { setResult(changeSummary()); taoHoSoWord(); return; }
       // Create a markdown summary instead of full legal document
       let summary = `### TỔNG HỢP THÔNG TIN HỒ SƠ\n\n`;
       summary += `Dưới đây là các thông tin sẽ được xuất ra file Excel. Vui lòng kiểm tra kỹ trước khi tải về.\n\n`;
@@ -946,6 +973,7 @@ const DocumentGenerator: React.FC = () => {
       summary += `\n\n*Dữ liệu đã sẵn sàng. Nhấn nút **Tải về (.xlsx)** bên dưới để lấy file Excel.*`;
       
       setResult(summary);
+      if (coTronWord) taoHoSoWord();
     } catch (err) {
       alert("Có lỗi xảy ra. Vui lòng thử lại.");
     } finally {
@@ -953,10 +981,8 @@ const DocumentGenerator: React.FC = () => {
     }
   };
 
-  const handleDownloadExcel = () => {
-    try {
-        const wb = XLSX.utils.book_new();
-
+  /** Dựng một dòng dữ liệu trộn thư (133 cột theo mẫu MailMerge_Data_30nganh.xlsx). Dùng chung cho Excel và Word. */
+  const buildMailMerge = () => {
         const getIdDocumentType = (idNumber?: string, extractedType?: string, isOrg?: boolean) => {
             if (!idNumber) return "";
             if (isOrg) return "";
@@ -1077,28 +1103,45 @@ const DocumentGenerator: React.FC = () => {
             cshHlLoaiGT = getIdDocumentType(info.beneficialOwnerIdNumber, info.beneficialOwnerIdDocumentType, false);
         }
 
-        // Process Industry List -> Split into columns
+        // Chủ sở hữu là cá nhân: chủ sở hữu hưởng lợi chính là người đó (sở hữu 100% vốn điều lệ)
+        if (info.ownerType !== 'organization') {
+            cshHlTen = chuTen || "";
+            cshHlGioiTinh = chuGioiTinh;
+            cshHlSinhNgay = chuSinhNgay;
+            cshHlLoaiGT = chuLoaiGT;
+            cshHlSoGT = chuSoGT || "";
+            cshHlNgayCap = chuNgayCap || "";
+            cshHlNoiCap = chuNoiCap || "";
+            cshHlDiaChi = chuDiaChi || "";
+            cshHlPhuong = chuPhuong || "";
+            cshHlTinh = chuTinh || "";
+            cshHlQuocGia = info.ownerAddressCountry || "Việt Nam";
+        }
+
+        // Ngành nghề: luôn đủ 30 cặp cột TEN_NGANH_n / MA_NGANH_n như file mẫu MailMerge_Data_30nganh.xlsx
+        const MAX_NGANH = 30;
+        const industryList: { name: string; code: string }[] =
+            info.industryCodes && info.industryCodes.length > 0
+                ? info.industryCodes.map(c => ({ name: c.name, code: c.code }))
+                : [
+                    ...(info.industry ? [{ name: info.industry, code: "" }] : []),
+                    ...(info.subIndustries ? [{ name: info.subIndustries, code: "" }] : []),
+                  ];
         const industryHeaders: string[] = [];
         const industryValues: string[] = [];
-
-        if (info.industryCodes && info.industryCodes.length > 0) {
-            info.industryCodes.forEach((code, index) => {
-                const idx = index + 1;
-                industryHeaders.push(`TEN_NGANH_${idx}`, `MA_NGANH_${idx}`);
-                industryValues.push(code.name, code.code);
-            });
-        } else {
-            // Fallback for manual input
-            if (info.industry) {
-                industryHeaders.push("TEN_NGANH_1", "MA_NGANH_1");
-                industryValues.push(info.industry, ""); // No code available
-            }
-            if (info.subIndustries) {
-                // Split sub industries by newline or comma if possible, but for now treat as one block or 2nd item
-                industryHeaders.push("TEN_NGANH_2", "MA_NGANH_2");
-                industryValues.push(info.subIndustries, "");
-            }
+        for (let i = 0; i < MAX_NGANH; i++) {
+            industryHeaders.push(`TEN_NGANH_${i + 1}`, `MA_NGANH_${i + 1}`);
+            industryValues.push(industryList[i]?.name || "", industryList[i]?.code || "");
         }
+        // Mã ngành chính (cột NGANH_CHINH)
+        const nganhChinh = info.industryCodes?.find(c => c.isMain)?.code || "";
+        // Quá 30 ngành: thêm cột ở cuối bảng để không làm lệch vị trí các cột theo mẫu
+        const extraHeaders: string[] = [];
+        const extraValues: string[] = [];
+        industryList.slice(MAX_NGANH).forEach((c, i) => {
+            extraHeaders.push(`TEN_NGANH_${MAX_NGANH + i + 1}`, `MA_NGANH_${MAX_NGANH + i + 1}`);
+            extraValues.push(c.name, c.code);
+        });
 
         // Header Row (Standardized Field Names)
         const headers = [
@@ -1109,8 +1152,9 @@ const DocumentGenerator: React.FC = () => {
             // Trụ sở chính
             "TS_DIA_CHI", "TS_PHUONG_XA", "TS_TINH_TP", "TS_QUOC_GIA", "TS_FULL",
             "DT_CTY", "EMAIL", "WEBSITE",
-            // Ngành nghề (Dynamic Columns)
+            // Ngành nghề (30 cặp cột cố định) + mã ngành chính
             ...industryHeaders,
+            "NGANH_CHINH",
             // Chủ sở hữu
             "CHU_LOAI", "CHU_TEN", "CHU_GIOI_TINH", "CHU_SINH_NGAY", "CHU_LOAI_GT", "CHU_MS_SO_GT", "CHU_NGAY_CAP", "CHU_NOI_CAP",
             "CHU_DIA_CHI", "CHU_PHUONG_XA", "CHU_TINH_TP", "CHU_SDT",
@@ -1126,7 +1170,9 @@ const DocumentGenerator: React.FC = () => {
             "DAI_DIEN_NGAY_CAP", "DAI_DIEN_NOI_CAP",
             "DAI_DIEN_DIA_CHI", "DAI_DIEN_PHUONG_XA", "DAI_DIEN_TINH_TP", "DAI_DIEN_QUOC_TICH", "DAI_DIEN_SDT",
             // Thuế
-            "THUE_DIA_CHI", "THUE_PHUONG_XA", "THUE_TINH_TP", "THUE_SDT", "THUE_EMAIL"
+            "THUE_DIA_CHI", "THUE_PHUONG_XA", "THUE_TINH_TP", "THUE_SDT", "THUE_EMAIL",
+            // Ngành thứ 31 trở đi (nếu có)
+            ...extraHeaders
         ];
 
         const exportCapital = info.capital ? info.capital.replace(/đồng/gi, '').trim() : '';
@@ -1139,8 +1185,9 @@ const DocumentGenerator: React.FC = () => {
             info.addressDetail, info.addressWard, info.addressCity, info.addressCountry, 
             `${info.addressDetail}, ${info.addressWard}, ${info.addressCity}, ${info.addressCountry}`,
             info.phone, info.email, info.website,
-            // Ngành nghề (Dynamic Values)
+            // Ngành nghề (30 cặp cột cố định) + mã ngành chính
             ...industryValues,
+            nganhChinh,
             // Chủ sở hữu
             info.ownerType === 'individual' ? 'Cá nhân' : 'Tổ chức',
             chuTen, chuGioiTinh, chuSinhNgay, chuLoaiGT, chuSoGT, chuNgayCap, chuNoiCap,
@@ -1157,21 +1204,116 @@ const DocumentGenerator: React.FC = () => {
             info.repIdDate, info.repIdPlace,
             info.repAddressDetail, info.repAddressWard, info.repAddressCity, info.repAddressCountry || "", info.repPhone || "",
             // Thuế
-            info.taxAddressDetail, info.taxAddressWard, info.taxAddressCity, info.taxPhone, info.taxEmail
-        ];
+            info.taxAddressDetail, info.taxAddressWard, info.taxAddressCity, info.taxPhone, info.taxEmail,
+            // Ngành thứ 31 trở đi (nếu có)
+            ...extraValues
+        ].map(v => (v === undefined || v === null ? "" : String(v)));
 
-        // 2. Create Sheet with 2 rows: Header and Data
-        const ws = XLSX.utils.aoa_to_sheet([headers, values]);
+        return { headers, values, industryCount: industryList.length, extraCount: extraHeaders.length / 2 };
+  };
 
-        XLSX.utils.book_append_sheet(wb, ws, "Data_MailMerge");
+  /** Tạo file Excel trộn thư (sheet Data_MailMerge: dòng 1 tên trường, dòng 2 dữ liệu). */
+  const buildExcelBytes = (headers: string[], values: string[]): Uint8Array => {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, values]), "Data_MailMerge");
+        return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  };
+  const excelFileName = () => `MailMerge_${safeName(info.nameAbbr || 'Data').replace(/\s+/g, '_')}_${new Date().getTime()}.xlsx`;
 
-        // Export
-        const fileName = `MailMerge_${info.nameAbbr || 'Data'}_${new Date().getTime()}.xlsx`;
-        XLSX.writeFile(wb, fileName);
+  const handleDownloadExcel = () => {
+    try {
+        if (isChangeTNHH1) {
+            const { headers, values } = buildChangeExcel();
+            downloadBytes(buildExcelBytes(headers, values), `MailMerge_ThayDoi_${(info.enterpriseCode || safeName(info.nameAbbr || 'Data')).replace(/[^\p{L}\p{N}]+/gu, '_')}_${Date.now()}.xlsx`, XLSX_MIME);
+            return;
+        }
+        const { headers, values, industryCount, extraCount } = buildMailMerge();
+        downloadBytes(buildExcelBytes(headers, values), excelFileName(), XLSX_MIME);
+        if (extraCount) {
+            alert(`Hồ sơ có ${industryCount} ngành, nhiều hơn 30 cột trong mẫu. Các ngành từ thứ 31 được thêm vào cuối bảng (cột TEN_NGANH_31 trở đi).`);
+        }
     } catch (e) {
         console.error("Export Excel Error", e);
         alert("Có lỗi khi xuất file Excel. Vui lòng thử lại.");
     }
+  };
+
+  /* ---------- Hồ sơ đăng ký thay đổi Công ty TNHH 1 thành viên ---------- */
+  const isChangeTNHH1 = taskType === 'change' && info.type === 'Công ty TNHH 1 Thành viên';
+
+  const buildChangeExcel = () => {
+    const { headers, values } = buildMailMerge();
+    const rec: Record<string, string> = {};
+    headers.forEach((h, i) => { rec[h] = values[i] ?? ''; });
+    return buildChangeRow(rec, info, change);
+  };
+
+  const changeSummary = () => {
+    const row = (k: string, v: string) => `| **${k}** | ${(v || '—').replace(/\|/g, '/')} |\n`;
+    let s = `### TỔNG HỢP HỒ SƠ ĐĂNG KÝ THAY ĐỔI\n\n| Trường thông tin | Nội dung |\n|---|---|\n`;
+    s += row('Doanh nghiệp', info.name);
+    s += row('Mã số doanh nghiệp', info.enterpriseCode || '');
+    s += row('Đăng ký thay đổi lần thứ', String((Number(info.changeCount) || 0) + 1));
+    s += row('Nội dung thay đổi', CHANGE_CASES.filter(c => change.cases[c.id]).map(c => c.label).join('; '));
+    const c = change;
+    if (c.cases.doiTen) s += row('Tên mới', [c.newName, c.newNameEn, c.newNameAbbr].filter(Boolean).join(' / '));
+    if (c.cases.diaChi) s += row('Trụ sở mới', [c.newAddressDetail, c.newAddressWard, c.newAddressCity].filter(Boolean).join(', '));
+    if (c.cases.von) s += row('Vốn điều lệ', `${c.oldCapital || info.capital || '?'} → ${c.newCapital} (${c.newCapitalInWords})`);
+    if (c.cases.nganh) {
+      if (c.addIndustries.length) s += row('Bổ sung ngành', c.addIndustries.map(x => `${x.code}${x.isMain ? ' (chính)' : ''}`).join(', '));
+      if (c.removeIndustries.length) s += row('Rút bớt ngành', c.removeIndustries.map(x => x.code).join(', '));
+    }
+    if (c.cases.daiDien) s += row('Người đại diện mới', `${info.ownerName || '?'} → ${c.newRep.name}${c.newRep.title ? ' (' + c.newRep.title + ')' : ''}`);
+    if (c.cases.chuSoHuu) s += row('Chủ sở hữu mới', `${(info.ownerType === 'organization' ? info.ownerOrgName : info.companyOwner) || '?'} → ${c.newOwner.name}`);
+    if (c.cases.capNhat && c.cnTruSo) s += row('Cập nhật trụ sở (Mục B)', [c.cnTsDetail, c.cnTsWard, c.cnTsCity].filter(Boolean).join(', '));
+    if (c.cases.capNhat && c.cnLienHe) c.cnNguoi.filter(x => x.name.trim()).forEach(x => { s += row(`Cập nhật liên hệ: ${x.name.toUpperCase()}`, [x.detail, x.ward, x.city].filter(Boolean).join(', ')); });
+    s += `\n\n*Giấy đề nghị (Mẫu số 12/13) đã điền sẵn ở bên dưới; nhấn **Tải về (.xlsx)** nếu cần file dữ liệu Excel.*`;
+    return s;
+  };
+
+  /* ---------- Trộn hồ sơ Word (Giấy đề nghị, Điều lệ) cho Công ty TNHH 1 thành viên ---------- */
+  const coTronWord = (taskType === 'new' && info.type === 'Công ty TNHH 1 Thành viên') || isChangeTNHH1;
+
+  const taoHoSoWord = async () => {
+    setWordBusy(true);
+    setWordError(null);
+    setWordFiles(null);
+    try {
+        if (isChangeTNHH1) {
+            const { headers, values } = buildChangeExcel();
+            // Mẫu 12 cho đổi tên/địa chỉ/vốn/ngành/chủ sở hữu; Mẫu 13 khi đổi người đại diện theo pháp luật
+            const { daiDien, ...khac } = change.cases;
+            const mau = [
+                ...(Object.values(khac).some(Boolean) ? MAU_THAY_DOI_TNHH_1TV : []),
+                ...(daiDien ? [MAU_DOI_DAI_DIEN] : []),
+            ];
+            const cur = buildMailMerge();
+            const curRec: Record<string, string> = {};
+            cur.headers.forEach((h, i) => { curRec[h] = cur.values[i] ?? ''; });
+            setWordFiles(await tronBoHoSo([...mau, ...MAU_KEM_THAY_DOI], buildChangeWordRecord(headers, values, change, curRec)));
+            return;
+        }
+        const { headers, values } = buildMailMerge();
+        const rec: MergeRecord = {};
+        headers.forEach((h, i) => { rec[h.toUpperCase()] = values[i] ?? ''; });
+        setWordFiles(await tronBoHoSo(MAU_TNHH_1TV, rec));
+    } catch (e) {
+        console.error("Tron ho so Word", e);
+        setWordError(aiErrorMessage(e));
+    } finally {
+        setWordBusy(false);
+    }
+  };
+
+  const taiTronBo = () => {
+    if (!wordFiles) return;
+    const { headers, values } = isChangeTNHH1 ? buildChangeExcel() : buildMailMerge();
+    const tenCty = khongDau(safeName(info.name || 'HoSo'));
+    const zip = zipFiles([
+        ...wordFiles.map(f => ({ name: f.name, bytes: f.bytes })),
+        { name: `Du lieu - ${tenCty}.xlsx`, bytes: buildExcelBytes(headers, values) },
+    ]);
+    downloadBytes(zip, `${isChangeTNHH1 ? 'Ho so thay doi' : 'Ho so'} - ${tenCty}.zip`, 'application/zip');
   };
 
   const copyToClipboard = () => {
@@ -1193,6 +1335,7 @@ const DocumentGenerator: React.FC = () => {
 
   const handleTaskSelect = (type: TaskType) => {
     setTaskType(type);
+    setChange(emptyChange());
     setStep('type');
   };
 
@@ -1269,9 +1412,10 @@ const DocumentGenerator: React.FC = () => {
            <h2 className="text-3xl font-bold text-slate-800">{taskType === 'new' ? 'Soạn hồ sơ thành lập' : 'Soạn hồ sơ thay đổi'}</h2>
            <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">{info.type}</span>
         </div>
-        <p className="text-slate-500 mt-2">Điền thông tin doanh nghiệp để AI tự động tạo bộ hồ sơ.</p>
+        <p className="text-slate-500 mt-2">{isChangeTNHH1 ? 'Rút trích GPKD để lấy tên và mã số doanh nghiệp, rồi chọn nội dung cần thay đổi.' : 'Điền thông tin doanh nghiệp để AI tự động tạo bộ hồ sơ.'}</p>
       </header>
 
+      {!isChangeTNHH1 && (
       <div className="mb-8 bg-gradient-to-r from-indigo-50 to-blue-50 border border-blue-100 rounded-2xl p-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 opacity-10"><Sparkles className="w-24 h-24 text-blue-600" /></div>
         <div className="relative z-10">
@@ -1298,9 +1442,11 @@ const DocumentGenerator: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Một cột: form trải hết bề ngang, phần kết quả + tải Excel nằm dưới cùng */}
       <div className="space-y-8">
+        {isChangeTNHH1 && <GpkdExtractor info={info} setInfo={setInfo} offices={REGISTRATION_OFFICES} />}
         <div className="space-y-6">
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
              <div className="flex items-center justify-between">
@@ -1325,6 +1471,7 @@ const DocumentGenerator: React.FC = () => {
              </div>
           </div>
 
+          {!isChangeTNHH1 && (<>
           {info.type === 'Công ty TNHH 1 Thành viên' && (
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="text-lg font-semibold mb-4 text-slate-800 flex items-center gap-2">
@@ -1503,10 +1650,7 @@ const DocumentGenerator: React.FC = () => {
                         <MapPin className="w-4 h-4 text-blue-600"/>
                         Địa chỉ trụ sở chính
                     </label>
-                    <button onClick={() => handleAddressUpdate('hq')} disabled={updatingAddress['hq']} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                        {updatingAddress['hq'] ? <Loader2 className="w-3 h-3 animate-spin"/> : <RefreshCw className="w-3 h-3"/>}
-                        Cập nhật 2025
-                    </button>
+                    <AddressAIButton prefix="hq" />
                 </div>
                 <div>
                     <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Số nhà, đường/phố/thôn" value={info.addressDetail} onChange={e => setInfo({ ...info, addressDetail: e.target.value })} />
@@ -1630,7 +1774,7 @@ const DocumentGenerator: React.FC = () => {
                                 </div>
                                 
                                 <div className="space-y-2 bg-white p-2 rounded-lg border border-slate-200">
-                                    <label className="block text-xs font-medium text-slate-700">Địa chỉ trụ sở tổ chức</label>
+                                    <div className="flex justify-between items-center"><label className="block text-xs font-medium text-slate-700">Địa chỉ trụ sở tổ chức</label><AddressAIButton prefix="org" /></div>
                                     <div>
                                         <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm" placeholder="Số nhà, đường/phố" value={info.ownerOrgAddressDetail} onChange={e => setInfo({ ...info, ownerOrgAddressDetail: e.target.value })} />
                                     </div>
@@ -1702,14 +1846,7 @@ const DocumentGenerator: React.FC = () => {
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-xs font-medium text-slate-700">Địa chỉ liên lạc</label>
                                 {!useHQAddress.owner && (
-                                    <button
-                                        onClick={() => handleAddressUpdate('owner')}
-                                        className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"
-                                        disabled={updatingAddress['owner']}
-                                    >
-                                        {updatingAddress['owner'] ? <Loader2 className="w-3 h-3 animate-spin"/> : <RefreshCw className="w-3 h-3" />}
-                                        Cập nhật 2025
-                                    </button>
+                                    <AddressAIButton prefix="owner" />
                                 )}
                             </div>
                             <div className="flex gap-4 mb-3">
@@ -1823,7 +1960,7 @@ const DocumentGenerator: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="space-y-2 bg-white p-2 rounded-lg border border-slate-200">
-                                            <label className="block text-xs font-medium text-slate-700">Địa chỉ thường trú</label>
+                                            <div className="flex justify-between items-center"><label className="block text-xs font-medium text-slate-700">Địa chỉ thường trú</label><AddressAIButton prefix="bo" /></div>
                                             <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm" 
                                                 value={info.beneficialOwnerAddressDetail} 
                                                 onChange={e => setInfo({ ...info, beneficialOwnerAddressDetail: e.target.value })} 
@@ -1905,14 +2042,7 @@ const DocumentGenerator: React.FC = () => {
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-xs font-medium text-slate-700">Địa chỉ liên lạc</label>
                                 {!useHQAddress.rep && (
-                                    <button
-                                        onClick={() => handleAddressUpdate('rep')}
-                                        className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"
-                                        disabled={updatingAddress['rep']}
-                                    >
-                                        {updatingAddress['rep'] ? <Loader2 className="w-3 h-3 animate-spin"/> : <RefreshCw className="w-3 h-3" />}
-                                        Cập nhật 2025
-                                    </button>
+                                    <AddressAIButton prefix="rep" />
                                 )}
                             </div>
                             <div className="flex gap-4 mb-3">
@@ -1968,14 +2098,7 @@ const DocumentGenerator: React.FC = () => {
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-sm font-medium text-slate-700">Địa chỉ nhận thông báo thuế</label>
                                 {!useHQAddress.tax && (
-                                    <button
-                                        onClick={() => handleAddressUpdate('tax')}
-                                        className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition"
-                                        disabled={updatingAddress['tax']}
-                                    >
-                                        {updatingAddress['tax'] ? <Loader2 className="w-3 h-3 animate-spin"/> : <RefreshCw className="w-3 h-3" />}
-                                        Cập nhật 2025
-                                    </button>
+                                    <AddressAIButton prefix="tax" />
                                 )}
                             </div>
                             <div className="flex gap-4 mb-3">
@@ -2024,7 +2147,10 @@ const DocumentGenerator: React.FC = () => {
                 </div>
             </div>
           </div>
+          </>)}
         </div>
+
+        {isChangeTNHH1 && <ChangeCases info={info} change={change} setChange={setChange} />}
 
         <div className="space-y-6">
             <div>
@@ -2044,12 +2170,62 @@ const DocumentGenerator: React.FC = () => {
                     
                     {result ? (
                         <div className="prose prose-slate max-w-none p-6 bg-slate-50 rounded-xl border border-slate-200 max-h-[600px] overflow-y-auto custom-scrollbar">
-                             <ReactMarkdown>{result}</ReactMarkdown>
+                             <SummaryView text={result} />
                         </div>
                     ) : (
                         <div className="py-10 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 text-center px-4">
                             <FileText className="w-12 h-12 mb-3 opacity-20" />
                             <p>Điền thông tin và nhấn "Tạo hồ sơ" để xem trước và xuất Excel</p>
+                        </div>
+                    )}
+
+                    {result && coTronWord && (
+                        <div className="mt-6 pt-6 border-t border-slate-100">
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                <div>
+                                    <h4 className="font-semibold text-slate-800">Hồ sơ Word đã điền sẵn</h4>
+                                    <p className="text-sm text-slate-500">{isChangeTNHH1
+                                        ? 'Giấy đề nghị theo Mẫu số 12 (chỉ giữ các mục đã chọn), Mẫu số 13 khi đổi người đại diện, Giấy ủy quyền và Danh sách chủ sở hữu hưởng lợi.'
+                                        : 'Giấy đề nghị, Điều lệ, Giấy ủy quyền và Danh sách chủ sở hữu hưởng lợi, trộn từ đúng dữ liệu trong file Excel; bảng ngành đã bỏ dòng trống và đánh lại STT.'}</p>
+                                </div>
+                                <button
+                                    onClick={taiTronBo}
+                                    disabled={!wordFiles}
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
+                                >
+                                    <Files className="w-4 h-4" /> Tải trọn bộ (.zip)
+                                </button>
+                            </div>
+                            {wordBusy && (
+                                <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
+                                    <Loader2 className="w-4 h-4 animate-spin" /> Đang trộn hồ sơ Word...
+                                </div>
+                            )}
+                            {wordError && (
+                                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                                    Không trộn được hồ sơ Word: {wordError}
+                                    <button onClick={taoHoSoWord} className="ml-2 underline font-medium">Thử lại</button>
+                                </div>
+                            )}
+                            {wordFiles && (
+                                <div className="grid sm:grid-cols-2 gap-3">
+                                    {wordFiles.map(f => (
+                                        <button
+                                            key={f.name}
+                                            onClick={() => downloadBytes(f.bytes, f.name, DOCX_MIME)}
+                                            className="text-left p-3 rounded-xl border border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors flex items-start gap-3"
+                                        >
+                                            <FileText className="w-5 h-5 text-blue-700 mt-0.5 shrink-0" />
+                                            <span className="min-w-0">
+                                                <span className="block font-medium text-slate-800 truncate">{f.nhan}</span>
+                                                <span className="block text-xs text-slate-500 truncate">{f.name}</span>
+                                                {f.warnings.length > 0 && <span className="block text-xs text-amber-700 mt-1">{f.warnings.join('; ')}</span>}
+                                            </span>
+                                            <Download className="w-4 h-4 text-slate-400 ml-auto mt-0.5 shrink-0" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
