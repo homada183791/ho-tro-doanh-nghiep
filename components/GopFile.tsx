@@ -92,11 +92,8 @@ const GopFile: React.FC = () => {
   const btn = 'px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm flex items-center gap-1.5 hover:bg-slate-50 disabled:opacity-50';
 
   return (
-    <div className="max-w-7xl mx-auto pb-12">
-      <header className="mb-6">
-        <h2 className="text-3xl font-bold text-slate-800">Gộp file PDF</h2>
-        <p className="text-slate-500 mt-2">Thêm file Word hoặc PDF: mỗi trang tự tách thành 1 thẻ có ảnh xem trước. Kéo thả để sắp thứ tự trang, rồi gộp thành 1 file PDF.</p>
-      </header>
+    <div>
+      <p className="text-slate-500 mb-4">Thêm file Word hoặc PDF: mỗi trang tự tách thành 1 thẻ có ảnh xem trước. Kéo thả để sắp thứ tự trang, rồi gộp thành 1 file PDF.</p>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <label className="flex items-center gap-2 text-sm text-slate-700 mr-2">

@@ -5,7 +5,7 @@ import DocumentGenerator from './components/DocumentGenerator';
 import LegalChat from './components/LegalChat';
 import BrandStudio from './components/BrandStudio';
 // Tải riêng trang Gộp file: thiếu thư viện (chưa npm install) thì chỉ trang này báo lỗi, các trang khác vẫn chạy
-const GopFile = lazy(() => import('./components/GopFile'));
+const CongCuPdf = lazy(() => import('./components/CongCuPdf'));
 
 class LoiTrang extends React.Component<{ children: React.ReactNode }, { loi: string | null }> {
   state = { loi: null as string | null };
@@ -68,7 +68,7 @@ function App() {
           {currentView === 'brand' && <BrandStudio />}
           {currentView === 'merge' && (
             <LoiTrang>
-              <Suspense fallback={<p className="text-slate-500">Đang tải...</p>}><GopFile /></Suspense>
+              <Suspense fallback={<p className="text-slate-500">Đang tải...</p>}><CongCuPdf /></Suspense>
             </LoiTrang>
           )}
         </div>

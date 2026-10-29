@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onOpenSett
   const isGemini = settings.provider === 'gemini';
   const navItems = [
     { id: 'documents', label: 'Soạn hồ sơ', icon: FileText },
-    { id: 'merge', label: 'Gộp file PDF', icon: Files },
+    { id: 'merge', label: 'Gộp / Cắt PDF', icon: Files },
     { id: 'chat', label: 'Tư vấn pháp lý', icon: MessageSquare },
     { id: 'brand', label: 'Thương hiệu', icon: ImageIcon },
   ] as const;
