@@ -800,6 +800,24 @@ export const ChangeCases: React.FC<{
         </div>
       )}
 
+      {change.cases.chuHuongLoi && (
+        <div className="mt-4 p-4 rounded-xl border border-blue-200 bg-blue-50/30 space-y-3">
+          <h4 className="text-sm font-semibold text-slate-800">8. Thông báo thay đổi thông tin về chủ sở hữu hưởng lợi của doanh nghiệp</h4>
+          <p className="text-xs text-slate-500">Chọn đoạn sẽ in trên Giấy đề nghị. Danh sách chủ sở hữu hưởng lợi (Mẫu số 10) gửi kèm vẫn tạo như bình thường.</p>
+          <div className="space-y-2" role="radiogroup" aria-label="Đoạn thông báo chủ sở hữu hưởng lợi">
+            {([
+              ['a', 'a) Trường hợp doanh nghiệp có sự thay đổi thông tin về chủ sở hữu hưởng lợi của doanh nghiệp (bao gồm người quản lý doanh nghiệp) đã kê khai với Cơ quan đăng ký kinh doanh cấp tỉnh thì doanh nghiệp kê khai theo Mẫu số 10 Phụ lục I ban hành kèm theo Thông tư này: Gửi kèm.'],
+              ['b', 'b) Đối với doanh nghiệp được thành lập trước ngày 01/7/2025, doanh nghiệp bổ sung thông tin về chủ sở hữu hưởng lợi của doanh nghiệp theo quy định tại khoản 1 Điều 3 Luật số 76/2025/QH15 ngày 17/6/2025 sửa đổi, bổ sung một số điều của Luật Doanh nghiệp (kê khai theo Mẫu số 10 Phụ lục I ban hành kèm theo Thông tư này): Gửi kèm.'],
+            ] as const).map(([v, t]) => (
+              <label key={v} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer text-sm ${change.hlTB === v ? 'border-blue-500 bg-white' : 'border-slate-200 bg-white/60'}`}>
+                <input type="radio" name="hl-tb" className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0" checked={change.hlTB === v} onChange={() => upd('hlTB', v)} />
+                <span className="text-slate-700">{t}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {Object.values(change.cases).some(Boolean) && (() => {
         const coChuCaNhan = info.ownerType !== 'organization' && !!(info.companyOwner || '').trim();
         const nguon = change.hlNguon || (change.cases.chuSoHuu ? (change.newOwnerType === 'individual' ? 'chu' : 'khac') : coChuCaNhan ? 'chu' : 'khac');
@@ -828,6 +846,15 @@ export const ChangeCases: React.FC<{
           </div>
         );
       })()}
+
+      {Object.values(change.cases).some(Boolean) && (
+        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <Field label={`SĐT Chủ tịch công ty / Giám đốc${info.ownerName ? ` (${info.ownerName.toUpperCase()})` : ''}`} value={change.sdtGiamDoc}
+            onChange={(v) => upd('sdtGiamDoc', v)} placeholder={info.repPhone || 'Số điện thoại'} />
+          <Field label="SĐT công ty" value={change.sdtCongTy} onChange={(v) => upd('sdtCongTy', v)} placeholder={info.phone || 'Số điện thoại'} />
+          <p className="text-xs text-slate-500">Ghi vào mục thông tin đăng ký thuế (Giám đốc, địa chỉ nhận thông báo thuế) và điện thoại trụ sở. Đổi người đại diện thì dùng SĐT của người mới.</p>
+        </div>
+      )}
 
       {Object.values(change.cases).some(Boolean) && (
         <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">

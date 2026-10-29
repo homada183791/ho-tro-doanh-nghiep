@@ -5,7 +5,7 @@
 import type { IndustryCode } from '../types';
 import { tinhMoi, noiKyTheoTinh } from './tinhThanh';
 
-export type ChangeCaseId = 'doiTen' | 'diaChi' | 'von' | 'nganh' | 'daiDien' | 'chuSoHuu' | 'capNhat';
+export type ChangeCaseId = 'doiTen' | 'diaChi' | 'von' | 'nganh' | 'daiDien' | 'chuSoHuu' | 'capNhat' | 'chuHuongLoi';
 
 export const CHANGE_CASES: { id: ChangeCaseId; label: string; col: string }[] = [
   { id: 'doiTen', label: 'Đổi tên công ty', col: 'TD_DOI_TEN' },
@@ -15,6 +15,7 @@ export const CHANGE_CASES: { id: ChangeCaseId; label: string; col: string }[] = 
   { id: 'daiDien', label: 'Thay đổi người đại diện theo pháp luật', col: 'TD_DAI_DIEN' },
   { id: 'chuSoHuu', label: 'Thay đổi chủ sở hữu', col: 'TD_CHU_SO_HUU' },
   { id: 'capNhat', label: 'Bổ sung, cập nhật thông tin (Mục B)', col: 'TD_CAP_NHAT' },
+  { id: 'chuHuongLoi', label: 'Chủ sở hữu hưởng lợi', col: 'TD_CSH_HL' },
 ];
 
 /** Mục B: người cần cập nhật địa chỉ liên hệ. */
@@ -56,12 +57,17 @@ export interface ChangeData {
   // Chủ sở hữu hưởng lợi (Danh sách chủ sở hữu hưởng lợi): lấy theo chủ sở hữu, người đại diện, hoặc nhập người khác
   hlNguon: '' | 'chu' | 'daiDien' | 'khac';
   hl: PersonInfo;
+  // Số điện thoại nhập thêm (GPKD không ghi): Chủ tịch công ty/Giám đốc và công ty
+  sdtGiamDoc: string;
+  sdtCongTy: string;
+  // 8. Chủ sở hữu hưởng lợi: thông báo trên Giấy đề nghị, chọn đoạn a) hoặc b)
+  hlTB: 'a' | 'b';
   // Người ký giấy đề nghị (để trống: tự chọn)
   signer: string;
 }
 
 export const emptyChange = (): ChangeData => ({
-  cases: { doiTen: false, diaChi: false, von: false, nganh: false, daiDien: false, chuSoHuu: false, capNhat: false },
+  cases: { doiTen: false, diaChi: false, von: false, nganh: false, daiDien: false, chuSoHuu: false, capNhat: false, chuHuongLoi: false },
   newName: '', newNameEn: '', newNameAbbr: '',
   newAddressDetail: '', newAddressWard: '', newAddressCity: '', newPhone: '', newEmail: '', newWebsite: '',
   oldCapital: '', oldCapitalInWords: '',
@@ -72,6 +78,7 @@ export const emptyChange = (): ChangeData => ({
   cnTruSo: false, cnTsDetail: '', cnTsWard: '', cnTsCity: '',
   cnLienHe: false, cnNguoi: [],
   hlNguon: '', hl: emptyPerson(),
+  sdtGiamDoc: '', sdtCongTy: '', hlTB: 'b',
   signer: '',
 });
 
@@ -151,10 +158,19 @@ const MAX_NGANH = 30;
  * `current` là bản ghi trộn thư của thông tin hiện tại (tên cột -> giá trị).
  */
 export const buildChangeRow = (
-  current: Record<string, string>,
+  currentGoc: Record<string, string>,
   gpkd: { enterpriseCode?: string; firstRegDate?: string; changeCount?: string; lastChangeDate?: string },
   c: ChangeData
 ): { headers: string[]; values: string[] } => {
+  // Số điện thoại nhập thêm ghi đè số trên GPKD: Giám đốc (người đại diện; chủ sở hữu nếu là cùng người) và công ty
+  const sdtGd = (c.sdtGiamDoc || '').trim(), sdtCty = (c.sdtCongTy || '').trim();
+  const cungNguoi = (a?: string, b?: string) => !!a && !!b && a.normalize('NFC').trim().toUpperCase() === b.normalize('NFC').trim().toUpperCase();
+  const current: Record<string, string> = {
+    ...currentGoc,
+    DT_CTY: sdtCty || currentGoc.DT_CTY || '',
+    DAI_DIEN_SDT: sdtGd || currentGoc.DAI_DIEN_SDT || '',
+    CHU_SDT: (sdtGd && cungNguoi(currentGoc.CHU_TEN, currentGoc.DAI_DIEN_TEN) ? sdtGd : '') || currentGoc.CHU_SDT || '',
+  };
   const cols: [string, string][] = [];
   const add = (k: string, v: string | undefined) => cols.push([k, v ?? '']);
 
@@ -192,7 +208,7 @@ export const buildChangeRow = (
   add('TS_MOI_TINH_TP', on.diaChi ? c.newAddressCity : '');
   add('TS_MOI_QUOC_GIA', on.diaChi ? 'Việt Nam' : '');
   add('TS_MOI_FULL', on.diaChi && c.newAddressDetail ? addrParts.join(', ') : '');
-  add('DT_MOI', on.diaChi ? c.newPhone : '');
+  add('DT_MOI', on.diaChi ? c.newPhone || sdtCty : '');
   add('EMAIL_MOI', on.diaChi ? c.newEmail : '');
   add('WEBSITE_MOI', on.diaChi ? c.newWebsite : '');
 
@@ -271,7 +287,7 @@ export const buildChangeRow = (
   add('THUE_MOI_DIA_CHI', thueA ? c.newAddressDetail : thueB ? c.cnTsDetail : '');
   add('THUE_MOI_PHUONG_XA', thueA ? c.newAddressWard : thueB ? c.cnTsWard : '');
   add('THUE_MOI_TINH_TP', thueA ? c.newAddressCity : thueB ? c.cnTsCity : '');
-  add('THUE_MOI_SDT', thueA ? c.newPhone : '');
+  add('THUE_MOI_SDT', thueA ? c.newPhone || sdtCty : thueB ? sdtCty : '');
   add('THUE_MOI_EMAIL', thueA ? c.newEmail : '');
   // Thuế – chỉ tiêu 1 (Giám đốc/Tổng giám đốc):
   //  - đổi người đại diện: điền người đại diện mới;
@@ -286,6 +302,14 @@ export const buildChangeRow = (
   add('GD_SO_GT', gdMoi ? gdMoi.idNumber : gdCapNhat ? current.DAI_DIEN_SO_GT : '');
   add('GD_SDT', gdMoi ? gdMoi.phone : gdCapNhat ? current.DAI_DIEN_SDT : '');
   add('TD_THUE', on.daiDien || thueA || thueB || gdCapNhat ? 'X' : '');
+
+  // Thông báo thay đổi thông tin về chủ sở hữu hưởng lợi (Mẫu 12):
+  //  - chọn mục 8: chỉ in đoạn a) hoặc b) đã chọn;
+  //  - chỉ chọn "Thay đổi chủ sở hữu": in cả a) và b) như trước.
+  const hl = on.chuHuongLoi;
+  add('TB_HL', hl || on.chuSoHuu ? 'X' : '');
+  add('TB_HL_A', hl ? (c.hlTB === 'a' ? 'X' : '') : on.chuSoHuu ? 'X' : '');
+  add('TB_HL_B', hl ? (c.hlTB !== 'a' ? 'X' : '') : on.chuSoHuu ? 'X' : '');
 
   add('NGUOI_KY', nguoiKyMacDinh(c, current));
 

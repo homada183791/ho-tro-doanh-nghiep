@@ -49,6 +49,8 @@ import { Upload, FileType, CheckCircle, Loader2, Download, Copy, FileText, Spark
 import ReactMarkdown from 'react-markdown';
 import * as XLSX from 'xlsx';
 import { GpkdExtractor, ChangeCases } from './ChangeRequest';
+import { HoKinhDoanhForm } from './HoKinhDoanhForm';
+import { SauThanhLapForm } from './SauThanhLapForm';
 import { tinhMoi, coQuanDangKy } from '../services/tinhThanh';
 import { filesThanhAnh } from '../services/pdfAnh';
 import { emptyChange, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
@@ -92,7 +94,7 @@ const SummaryView: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-type TaskType = 'new' | 'change';
+type TaskType = 'new' | 'change' | 'sauThanhLap';
 type Step = 'task' | 'type' | 'form';
 
 // Danh sách 34 Phòng Đăng ký kinh doanh thuộc Sở Tài chính theo tài liệu PDF
@@ -907,7 +909,7 @@ const DocumentGenerator: React.FC = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!rawInput.trim() || !taskType) return;
+    if (!rawInput.trim() || (taskType !== 'new' && taskType !== 'change')) return;
     setIsAnalyzing(true);
     try {
       const analyzedInfo = await analyzeBusinessInput(rawInput, taskType);
@@ -1348,6 +1350,9 @@ const DocumentGenerator: React.FC = () => {
     setInfo(prev => ({ ...prev, ownerType: type }));
   };
 
+  // Hồ sơ sau thành lập: trang riêng (đọc GPKD, điền các mẫu {{...}})
+  if (taskType === 'sauThanhLap') return <SauThanhLapForm onBack={() => { setTaskType(null); setStep('task'); }} />;
+
   if (step === 'task') {
     return (
       <div className="max-w-5xl mx-auto pb-12">
@@ -1355,7 +1360,7 @@ const DocumentGenerator: React.FC = () => {
           <h2 className="text-4xl font-bold text-slate-800 mb-4">Bạn muốn thực hiện thủ tục gì?</h2>
           <p className="text-slate-500 text-lg">Chọn loại hồ sơ bạn cần soạn thảo để AI hỗ trợ chính xác nhất.</p>
         </header>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
           <button onClick={() => handleTaskSelect('new')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all duration-300 text-left">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors duration-300">
                <PlusCircle className="w-8 h-8 text-blue-600 group-hover:text-white transition-colors" />
@@ -1369,6 +1374,13 @@ const DocumentGenerator: React.FC = () => {
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-emerald-600 transition-colors">Thay đổi thông tin</h3>
             <p className="text-slate-500 leading-relaxed">Soạn thảo hồ sơ thay đổi nội dung đăng ký kinh doanh như: đổi tên, địa chỉ, tăng vốn, thay đổi ngành nghề.</p>
+          </button>
+          <button onClick={() => handleTaskSelect('sauThanhLap')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all duration-300 text-left">
+            <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-amber-500 transition-colors duration-300">
+               <Files className="w-8 h-8 text-amber-600 group-hover:text-white transition-colors" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-amber-600 transition-colors">Hồ sơ sau thành lập</h3>
+            <p className="text-slate-500 leading-relaxed">Đọc Giấy chứng nhận đăng ký doanh nghiệp rồi điền các mẫu sau thành lập: thuế, BHXH, ủy quyền, kế toán...</p>
           </button>
         </div>
       </div>
@@ -1401,6 +1413,9 @@ const DocumentGenerator: React.FC = () => {
       </div>
     );
   }
+
+  // Thành lập Hộ kinh doanh: trang riêng (Giấy đề nghị, Hợp đồng dịch vụ, Giấy giới thiệu)
+  if (taskType === 'new' && info.type === 'Hộ kinh doanh') return <HoKinhDoanhForm onBack={handleBack} />;
 
   return (
     <div className="max-w-7xl mx-auto pb-12 px-4">

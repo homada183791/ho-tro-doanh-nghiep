@@ -3,6 +3,9 @@ import http from 'http';
 import https from 'https';
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
+import { spawn } from 'child_process';
+import { pathToFileURL } from 'url';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -205,6 +208,169 @@ const aiServer = (env: Record<string, string>): Plugin => ({
 });
 
 /**
+ * Mẫu Word cho "Hồ sơ sau thành lập": mọi file .docx trong thư mục mau-sau-thanh-lap của dự án.
+ *  GET /__mau-stl            -> { dir, files: [tên file] }
+ *  GET /__mau-stl?file=X.docx -> nội dung file
+ *  GET/POST /__mau-stl/config -> thông tin nhớ dùng chung (người ủy quyền, kế toán, email...) lưu ở tools/sau-thanh-lap.json
+ *  (tools/ không đưa lên GitHub vì có số định danh)
+ */
+const MAU_STL_DIR = path.resolve('mau-sau-thanh-lap');
+const STL_CONFIG = path.resolve('tools/sau-thanh-lap.json');
+const docStlConfig = (): Record<string, string> => {
+  try { return fs.existsSync(STL_CONFIG) ? JSON.parse(fs.readFileSync(STL_CONFIG, 'utf8')) : {}; } catch { return {}; }
+};
+const mauSauThanhLap = (): Plugin => ({
+  name: 'legalbiz-mau-sau-thanh-lap',
+  configureServer(server) {
+    server.middlewares.use('/__mau-stl', async (req, res) => {
+      const url = new URL(req.url || '/', 'http://x');
+      if (url.pathname === '/config') {
+        if (req.method === 'GET') return sendJson(res, 200, docStlConfig());
+        if (req.method === 'POST') {
+          try {
+            const moi = JSON.parse(await readBody(req)) as Record<string, unknown>;
+            const cfg = docStlConfig();
+            for (const [k, v] of Object.entries(moi)) if (/^[A-Z0-9_]+$/.test(k) && typeof v === 'string') cfg[k] = v;
+            fs.mkdirSync(path.dirname(STL_CONFIG), { recursive: true });
+            fs.writeFileSync(STL_CONFIG, JSON.stringify(cfg, null, 2), 'utf8');
+            return sendJson(res, 200, cfg);
+          } catch (e: any) { return sendJson(res, 400, { error: String(e?.message || e) }); }
+        }
+        return sendJson(res, 405, { error: 'Chỉ hỗ trợ GET, POST' });
+      }
+      if (req.method !== 'GET') return sendJson(res, 405, { error: 'Chỉ hỗ trợ GET' });
+      const file = url.searchParams.get('file');
+      try {
+        if (!fs.existsSync(MAU_STL_DIR)) fs.mkdirSync(MAU_STL_DIR, { recursive: true });
+        if (!file) {
+          const files = fs.readdirSync(MAU_STL_DIR).filter((f) => /\.docx$/i.test(f) && !f.startsWith('~$')).sort((a, b) => a.localeCompare(b, 'vi'));
+          return sendJson(res, 200, { dir: MAU_STL_DIR, files });
+        }
+        const ten = path.basename(file);
+        const full = path.join(MAU_STL_DIR, ten);
+        if (ten !== file || !/\.docx$/i.test(ten) || !fs.existsSync(full)) return sendJson(res, 404, { error: 'Không có mẫu này' });
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(fs.readFileSync(full));
+      } catch (e: any) {
+        sendJson(res, 500, { error: String(e?.message || e) });
+      }
+    });
+  },
+});
+
+/**
+ * Đọc PDF Giấy chứng nhận đăng ký doanh nghiệp KHÔNG dùng AI: chạy scripts/doc_gp.py (phần đọc PDF của tool dien_mau.py).
+ *  POST /__doc-gp (thân = file PDF) -> { ok, fields, chars } | { ok:false, error }
+ * Cần Python + pdfminer.six, fonttools (start-public.bat tự cài). Đặt biến PYTHON để chỉ định python.exe.
+ */
+const DOC_GP_SCRIPT = path.resolve('scripts/doc_gp.py');
+const readRaw = (req: http.IncomingMessage, limit = 30_000_000) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const parts: Buffer[] = []; let n = 0;
+    req.on('data', (c: Buffer) => { n += c.length; if (n > limit) { reject(new Error('File quá lớn')); req.destroy(); } else parts.push(c); });
+    req.on('end', () => resolve(Buffer.concat(parts)));
+    req.on('error', reject);
+  });
+const chayPython = (args: string[], timeoutMs = 90_000) => {
+  const ung = [process.env.PYTHON, ...(process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'])].filter(Boolean) as string[];
+  return new Promise<{ code: number; out: string; err: string }>((resolve, reject) => {
+    const thu = (i: number) => {
+      if (i >= ung.length) return reject(new Error('khong_co_python'));
+      let out = '', err = '';
+      const p = spawn(ung[i], args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+      const t = setTimeout(() => p.kill(), timeoutMs);
+      p.stdout.on('data', (d) => { out += d.toString('utf8'); });
+      p.stderr.on('data', (d) => { err += d.toString('utf8'); });
+      p.on('error', () => { clearTimeout(t); thu(i + 1); });
+      p.on('close', (code) => { clearTimeout(t); resolve({ code: code ?? 1, out, err }); });
+    };
+    thu(0);
+  });
+};
+const docGiayPhepPdf = (): Plugin => ({
+  name: 'legalbiz-doc-gp',
+  configureServer(server) {
+    server.middlewares.use('/__doc-gp', async (req, res) => {
+      if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'Chỉ hỗ trợ POST' });
+      const tmp = path.join(os.tmpdir(), `legalbiz-gp-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+      try {
+        const pdf = await readRaw(req);
+        if (pdf.subarray(0, 5).toString() !== '%PDF-') return sendJson(res, 400, { ok: false, error: 'khong_phai_pdf' });
+        fs.writeFileSync(tmp, pdf);
+        const r = await chayPython([DOC_GP_SCRIPT, tmp]);
+        try { return sendJson(res, 200, JSON.parse(r.out)); }
+        catch { return sendJson(res, 200, { ok: false, error: 'doc_loi', detail: (r.err || r.out).slice(-500) }); }
+      } catch (e: any) {
+        return sendJson(res, 200, { ok: false, error: String(e?.message || e) });
+      } finally {
+        try { fs.unlinkSync(tmp); } catch { /* bỏ qua */ }
+      }
+    });
+  },
+});
+
+/**
+ * Đổi Word (.docx) sang PDF cho trang "Gộp file PDF" (như tool merge_word_gui.py):
+ * ưu tiên LibreOffice, dự phòng Microsoft Word qua thư viện Python docx2pdf.
+ *  POST /__docx-pdf (thân = file .docx) -> file PDF | { error }
+ */
+const timSoffice = () => {
+  const ung = process.platform === 'win32'
+    ? ['C:\\Program Files\\LibreOffice\\program\\soffice.exe', 'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe']
+    : ['/usr/bin/soffice', '/usr/local/bin/soffice', '/opt/libreoffice/program/soffice', '/Applications/LibreOffice.app/Contents/MacOS/soffice'];
+  return ung.find((x) => fs.existsSync(x)) || 'soffice';
+};
+const chay = (cmd: string, args: string[], timeoutMs = 120_000) =>
+  new Promise<{ code: number; err: string }>((resolve) => {
+    let err = '';
+    const p = spawn(cmd, args, { windowsHide: true });
+    const t = setTimeout(() => p.kill(), timeoutMs);
+    p.stderr.on('data', (d) => { err += d.toString(); });
+    p.on('error', (e) => { clearTimeout(t); resolve({ code: -1, err: String(e) }); });
+    p.on('close', (code) => { clearTimeout(t); resolve({ code: code ?? 1, err }); });
+  });
+const wordSangPdf = (): Plugin => ({
+  name: 'legalbiz-docx-pdf',
+  configureServer(server) {
+    server.middlewares.use('/__docx-pdf', async (req, res) => {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'Chỉ hỗ trợ POST' });
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'legalbiz-gop-'));
+      try {
+        const docx = await readRaw(req);
+        if (docx.subarray(0, 2).toString() !== 'PK') return sendJson(res, 400, { error: 'File không phải Word (.docx)' });
+        const vao = path.join(dir, 'tai_lieu.docx');
+        const ra = path.join(dir, 'tai_lieu.pdf');
+        fs.writeFileSync(vao, docx);
+        // 1) LibreOffice (hồ sơ người dùng riêng để chạy song song không bị khoá)
+        const profile = pathToFileURL(path.join(dir, 'lo-profile')).href;
+        const lo = await chay(timSoffice(), [`-env:UserInstallation=${profile}`, '--headless', '--convert-to', 'pdf', '--outdir', dir, vao]);
+        // 2) Microsoft Word qua docx2pdf (Windows)
+        let loiWord = '';
+        if (!fs.existsSync(ra)) {
+          try {
+            const w = await chayPython(['-c', 'import sys\nfrom docx2pdf import convert\nconvert(sys.argv[1], sys.argv[2])', vao, ra], 180_000);
+            loiWord = w.err.slice(-300);
+          } catch (e: any) { loiWord = String(e?.message || e); }
+        }
+        if (!fs.existsSync(ra)) {
+          return sendJson(res, 500, { error: `Không đổi được Word sang PDF: máy chủ cần LibreOffice hoặc Microsoft Word (+ pip install docx2pdf). ${lo.code === -1 ? 'Không tìm thấy LibreOffice.' : ''} ${loiWord}`.trim() });
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(fs.readFileSync(ra));
+      } catch (e: any) {
+        sendJson(res, 500, { error: String(e?.message || e) });
+      } finally {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* bỏ qua */ }
+      }
+    });
+  },
+});
+
+/**
  * Khoá web bằng mật khẩu khi đặt biến APP_PASSWORD (file start-public.bat tự đặt).
  * - Truy cập từ chính máy này (localhost) không cần mật khẩu.
  * - Truy cập qua đường link công khai phải đăng nhập 1 lần, trình duyệt nhớ 30 ngày.
@@ -292,7 +458,7 @@ export default defineConfig(({ mode }) => {
         // Cho phép mở qua đường link công khai (Cloudflare Tunnel / ngrok)
         allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.loca.lt', ...(env.PUBLIC_HOSTS ? env.PUBLIC_HOSTS.split(',') : [])],
       },
-      plugins: [passwordGate(password), react(), aiServer(env)],
+      plugins: [passwordGate(password), react(), aiServer(env), mauSauThanhLap(), docGiayPhepPdf(), wordSangPdf()],
       // Không đưa biến VITE_* (chứa key) xuống trình duyệt; key chỉ đọc ở máy chủ.
       envPrefix: 'LEGALBIZ_PUBLIC_',
       resolve: {

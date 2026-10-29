@@ -12,6 +12,7 @@ Công nghệ: React 19, Vite 6, TypeScript, Tailwind (CDN), `@google/genai`, `xl
 2. [Cài đặt API (key chỉ nằm trên máy chủ)](#2-cài-đặt-api-key-chỉ-nằm-trên-máy-chủ)
 3. [Soạn hồ sơ thành lập mới](#3-soạn-hồ-sơ-thành-lập-mới)
 4. [Soạn hồ sơ thay đổi – Công ty TNHH 1 thành viên](#4-soạn-hồ-sơ-thay-đổi--công-ty-tnhh-1-thành-viên)
+   - [Soạn hồ sơ thành lập – Hộ kinh doanh](#4b-soạn-hồ-sơ-thành-lập--hộ-kinh-doanh)
 5. [Các công cụ AI dùng chung](#5-các-công-cụ-ai-dùng-chung)
 6. [File Excel trộn thư](#6-file-excel-trộn-thư)
 7. [Mẫu Word và cách trộn](#7-mẫu-word-và-cách-trộn)
@@ -131,13 +132,16 @@ Menu **Soạn hồ sơ → Thay đổi thông tin → Công ty TNHH 1 Thành vi�
 
 | # | Trường hợp | Ô nhập và công cụ |
 |---|---|---|
-| 1 | Đổi tên công ty | Tên tiếng Việt, tiếng nước ngoài (nút dịch), viết tắt |
+| 1 | Đổi tên công ty | Tên tiếng Việt, tiếng nước ngoài (nút dịch), viết tắt. Có tên tiếng nước ngoài/viết tắt thì bỏ dòng chấm bên dưới; để trống thì giữ dòng chấm |
 | 2 | Thay đổi địa chỉ trụ sở chính | Rút trích từ hợp đồng thuê/sổ đỏ; **dán đoạn thông tin để AI tự điền**; cập nhật địa chỉ mới (AI); điện thoại, email, website |
 | 3 | Thay đổi vốn điều lệ | Vốn cũ điền sẵn từ GPKD; vốn mới tự đọc thành chữ; tự tính tăng/giảm và chênh lệch; thời điểm và hình thức tăng/giảm vốn |
 | 4 | Thay đổi ngành, nghề | Bổ sung: tả ngành để AI tra VSIC 2025 hoặc gõ mã; ngôi sao chọn ngành chính. Bỏ ngành: gõ mã, tên tự lấy theo VSIC (sửa được) |
 | 5 | Thay đổi người đại diện theo pháp luật | Rút trích CCCD; chức danh, địa chỉ liên lạc, điện thoại, email; cập nhật địa chỉ mới (AI) |
 | 6 | Thay đổi chủ sở hữu | Cá nhân: rút trích CCCD. Tổ chức: rút trích GPKD của tổ chức nhận chuyển nhượng |
 | 7 | Bổ sung, cập nhật thông tin (Mục B) | Tick là tự lấy địa chỉ trụ sở, địa chỉ chủ sở hữu và người đại diện từ GPKD rồi **AI tự tra sang địa chỉ mới** (có nút "Tra địa chỉ mới cho tất cả" để tra lại, hiện địa chỉ trên GPKD để đối chiếu). Cập nhật địa chỉ trụ sở (dán thông tin/AI cập nhật địa chỉ). Cập nhật địa chỉ liên hệ của chủ sở hữu và người đại diện (tự lấy từ GPKD; cùng một người thì gộp "Là chủ sở hữu đồng thời là người đại diện pháp luật của doanh nghiệp"; tối đa 3 người) |
+| 8 | Chủ sở hữu hưởng lợi | Chọn đoạn a) (thay đổi thông tin đã kê khai) hoặc b) (doanh nghiệp thành lập trước 01/7/2025 bổ sung thông tin); Giấy đề nghị chỉ in đoạn đã chọn. Chỉ chọn "Thay đổi chủ sở hữu" thì in cả a) và b) như trước |
+
+**Số điện thoại:** ô "SĐT Chủ tịch công ty / Giám đốc" và "SĐT công ty". SĐT Giám đốc ghi vào chỉ tiêu Giám đốc/Tổng giám đốc trong mục thông tin đăng ký thuế; SĐT công ty ghi vào điện thoại địa chỉ nhận thông báo thuế và điện thoại trụ sở mới (khi không nhập riêng).
 
 **Người ký:** để trống thì tự chọn. Có đổi người đại diện thì chủ sở hữu ký, các trường hợp khác người đại diện hiện tại ký.
 
@@ -165,6 +169,54 @@ Menu **Soạn hồ sơ → Thay đổi thông tin → Công ty TNHH 1 Thành vi�
 - Tải từng file, **Tải trọn bộ (.zip)**, hoặc **Tải về (.xlsx)** dạng `MailMerge_ThayDoi_<MST>_….xlsx`.
 
 > Mẫu số 12 không có mục khai chủ sở hữu mới; khi đổi chủ sở hữu, web hiện giữ mục "chủ sở hữu hưởng lợi". Mẫu thông báo thay đổi chủ sở hữu sẽ bổ sung khi có file mẫu.
+
+---
+
+## 4b. Soạn hồ sơ thành lập – Hộ kinh doanh
+
+Chọn **Thành lập mới → Hộ kinh doanh**. Trang riêng (`components/HoKinhDoanhForm.tsx`, dữ liệu trộn ở `services/hoKinhDoanh.ts`), không ảnh hưởng form công ty.
+
+- **Nhập liệu thông minh:** dán cả đoạn thông tin khách gửi (tên, địa chỉ, vốn, điện thoại, ngành nghề, chủ hộ…), bấm **Tự động điền**: AI tách và điền form, tra luôn mã ngành VSIC 2025 (lời mô tả của khách ghi vào "Chi tiết"), địa chỉ còn quận/huyện thì tự đổi sang đơn vị hành chính mới. Phần còn thiếu (thường là chủ hộ) được báo ngay dưới ô.
+- **Ngày soạn, Kính gửi:** Kính gửi tự điền theo phường/xã của trụ sở (phường: "Phòng Kinh tế, Hạ tầng và Đô thị …"; xã/đặc khu: "Phòng Kinh tế …"), sửa tay được. Mặc định để trống ngày/tháng trên Giấy đề nghị cho chủ hộ tự ghi.
+- **Chủ hộ:** rút trích nhanh từ CCCD (mặt trước, mặt sau) và ảnh chụp Căn cước điện tử trên VNeID: ảnh được thu nhỏ trước khi gửi, AI dùng mức suy nghĩ thấp; có ảnh VNeID thì nơi thường trú và nơi ở hiện tại lấy theo VNeID (đã theo đơn vị hành chính mới), nơi ở hiện tại khác thường trú thì tự tách riêng. Nhập tay được; tuỳ chọn kê khai thêm dân tộc, quốc tịch, nơi thường trú, nơi ở hiện tại; nút "Cập nhật địa chỉ mới (AI)".
+- **Tên, trụ sở:** tự thêm "HỘ KINH DOANH" ở đầu tên; trụ sở có thể lấy theo nơi ở của chủ hộ; dán đoạn thông tin để AI tách địa chỉ.
+- **Ngành nghề:** tra AI theo mô tả, gõ tên để tìm trong VSIC 2025, hoặc nhập mã cấp 4; chọn đúng một ngành chính; ghi "Chi tiết" nếu cần (tối đa 20 ngành).
+- **Vốn, thuế:** vốn tự đọc thành chữ; số lao động; ngày bắt đầu hoạt động; phương pháp khoán/kê khai; địa chỉ nhận thông báo thuế nếu khác trụ sở.
+- **Chủ thể:** cá nhân hoặc các thành viên hộ gia đình (chủ hộ là dòng 1, thêm tối đa 4 người). Người đã có số định danh chỉ kê khai cột 1–5, 10 như chú thích của mẫu.
+- **Hợp đồng, Giấy giới thiệu:** nhập số thứ tự, web tự ghi `10/2026/HĐDV-TA`, `10/2026/GGT-TA`. Thông tin công ty dịch vụ và người đi nộp được lưu trên trình duyệt cho lần sau; số thứ tự tự tăng sau mỗi lần tạo.
+- **Người đi nộp mặc định:** khai trong file `.env.development.local` (đã chặn khỏi GitHub vì có số định danh), các dòng `LEGALBIZ_PUBLIC_NGUOI_NOP_TEN`, `_GIOI_TINH`, `_NGAY_SINH`, `_SO_DD`, `_CHUC_DANH`, `_SDT`. Mọi máy mở web qua máy chủ đều thấy sẵn; sửa trên form thì trình duyệt đó nhớ bản đã sửa, nút "Dùng người nộp mặc định" để lấy lại. Khởi động lại web sau khi sửa file.
+- **Tạo hồ sơ:** kiểm tra thiếu sót, rồi tải Giấy đề nghị, Hợp đồng cung cấp dịch vụ, Giấy giới thiệu từng file hoặc trọn bộ .zip.
+
+Trường trộn chính: `CQ_DK_KD`, `NOI_KY`, `GDN_NGAY`, `GDN_THANG`, `NGAY`, `THANG`, `NAM`, `CHU_*` (chủ hộ: `CHU_TEN`, `CHU_XUNG`, `CHU_SO_DD`, `CHU_TT_*`, `CHU_HT_*`…), `TEN_HKD`, `TEN_HKD_RUT`, `TS_*`, `TEN_NGANH_n`, `MA_NGANH_n`, `NGANH_CHINH`, `VON_SO`, `VON_CHU`, `THUE_*`, `NGAY_BD`, `SO_LAO_DONG`, ô đánh dấu `X_KHONG_TRU_SO`, `X_KE_KHAI`, `X_KHOAN`, `X_CA_NHAN`, `X_HO_GD` (giá trị ☒/☐), `TV_n_*`, `SO_HD`, `SO_GGT`, `CTY_*`, `NV_*`.
+
+---
+
+## 4c. Hồ sơ sau thành lập
+
+Chọn **Hồ sơ sau thành lập** ở màn hình chọn thủ tục (chuyển từ tool `dien_mau.py`).
+
+1. **Đọc giấy phép:** thêm file PDF Giấy chứng nhận đăng ký doanh nghiệp (hoặc ảnh), bấm **Đọc giấy phép**.
+   - **File PDF tải từ Cổng thông tin:** máy chủ đọc thẳng lớp chữ trong PDF bằng `scripts/doc_gp.py` (chính phần đọc PDF của tool `dien_mau.py`: tra ngược bảng font nhúng nên ra đúng từng chữ, kể cả tên có dấu), không dùng AI.
+   - **Ảnh chụp, PDF scan, hoặc máy chủ chưa có Python:** tự chuyển sang AI đọc ảnh; dòng thông báo ghi rõ đã đọc bằng cách nào và vì sao.
+   - Cần Python trên máy chủ; `start-public.bat` tự cài `pdfminer.six`, `fonttools` khi thiếu. Đặt biến `PYTHON` nếu muốn chỉ định python.exe.
+2. **Mẫu:** mọi file `.docx` trong thư mục `mau-sau-thanh-lap` của dự án trên máy chủ (mọi máy mở web dùng chung; chép mẫu vào rồi bấm **Tải lại**). **Thêm mẫu** để dùng tạm một file trên trình duyệt đang mở. Tick chọn mẫu cần điền.
+3. **Thông tin:** 4 nhóm như tool cũ (từ giấy phép, bổ sung, người được ủy quyền, kế toán). Ô viền đỏ là trường mẫu đã chọn có dùng nhưng còn trống. Trường lạ có trong mẫu tự hiện ở nhóm "Trường khác có trong mẫu".
+   - **Kính gửi cơ quan thuế, cơ quan BHXH:** đọc giấy phép xong AI tự tra theo địa chỉ trụ sở (có tìm kiếm web), nút **Tra thuế (AI)** / **Tra BHXH (AI)** để tra lại; dòng vàng "Nên kiểm tra lại" khi chưa tìm thấy nguồn ghi rõ, có link "Kiểm tra trên Google".
+   - **Thông tin nhớ dùng chung** (email, dân tộc, loại giấy tờ, nơi cấp, người được ủy quyền, kế toán) lưu ở `tools/sau-thanh-lap.json` trên máy chủ, cùng dạng `config.json` của tool cũ, mọi máy dùng chung; bấm Tạo hồ sơ là lưu lại. File nằm trong `tools/` nên không lên GitHub.
+4. **Tạo hồ sơ:** điền và tải từng file hoặc trọn bộ `.zip` tên `MST - TÊN CÔNG TY`. Trường còn trống giữ nguyên `{{...}}` và được báo lại.
+
+Trường trong mẫu ghi dạng `{{TEN_TRUONG}}` (giữ nguyên định dạng chữ tại chỗ đặt trường, kể cả khi Word tách trường thành nhiều đoạn): `TEN_CONG_TY`, `TEN_TIENG_ANH`, `TEN_VIET_TAT`, `MST`, `NGAY_DK`, `THANG_DK`, `NAM_DK`, `LOAI_HINH`, `LOAI_HINH_HOA`, `DIA_CHI`, `DIEN_THOAI`, `EMAIL`, `VON_DIEU_LE`, `VON_BANG_CHU`, `CHU_SO_HUU`, `NGUOI_DAI_DIEN`, `CHUC_DANH`, `GIOI_TINH`, `NGAY_SINH_GD`, `QUOC_TICH`, `CCCD_GD`, `DIA_CHI_LIEN_LAC`, `NGAY`, `THANG`, `NAM`, `CO_QUAN_THUE`, `CO_QUAN_BHXH`, `NGANH_HOAT_DONG`, `NGANH_KINH_TE`, `DIA_CHI_THUONG_TRU`, `DAN_TOC`, `LOAI_GIAY_TO`, `NGAY_CAP_GD`, `NOI_CAP_GD`, `NGUOI_UQ`, `CCCD_UQ`, `NGAY_CAP_UQ`, `NOI_CAP_UQ`, `DIA_CHI_UQ`, `KE_TOAN`, `NGAY_SINH_KT`, `CCCD_KT`, `NGAY_CAP_KT`, `NOI_CAP_KT`.
+
+---
+
+## 4d. Gộp file PDF
+
+Mục **Gộp file PDF** ở thanh bên trái (chuyển từ tool `merge_word_gui.py`).
+
+- **Thêm file** (.docx, .pdf; chọn nhiều), **Thêm cả thư mục**, hoặc kéo file từ máy vào khung. Mỗi trang tự tách thành 1 thẻ có ảnh xem trước.
+- **Kéo thả** thẻ để sắp xếp thứ tự TỪNG TRANG (trên điện thoại dùng nút ‹ ›). Tick chọn rồi **Xóa trang đã chọn**, hoặc ✕ để xoá 1 trang; kính lúp / bấm đúp để xem phóng to.
+- Đặt **Tên file kết quả**, bấm **Gộp thành PDF** để tải về. Trang được chép nguyên bản từ file gốc (không giảm chất lượng).
+- PDF xử lý ngay trên trình duyệt. File Word được máy chủ đổi sang PDF: ưu tiên LibreOffice, dự phòng Microsoft Word (cần `pip install docx2pdf`).
 
 ---
 
@@ -228,12 +280,16 @@ Các mẫu nằm trong `public/mau/` (mở bằng Word để sửa):
 | `Mau_CSH_HuongLoi_MailMerge.docx` | Danh sách chủ sở hữu hưởng lợi |
 | `Mau_ThayDoi_MailMerge.docx` | Giấy đề nghị đăng ký thay đổi – Mẫu số 12 |
 | `Mau13_DoiDaiDien_MailMerge.docx` | Giấy đề nghị thay đổi người đại diện – Mẫu số 13 (định dạng NĐ 30) |
+| `Mau_HKD_GDN_MailMerge.docx` | Giấy đề nghị đăng ký hộ kinh doanh |
+| `Mau_HKD_HopDongDichVu_MailMerge.docx` | Hợp đồng cung cấp dịch vụ đăng ký hộ kinh doanh |
+| `Mau_HKD_GiayGioiThieu_MailMerge.docx` | Giấy giới thiệu người nộp hồ sơ hộ kinh doanh |
 
 ### Bộ trộn (web và công cụ TronHoSo.py cho kết quả giống hệt)
 
 - Điền `MERGEFIELD`, tính trường `IF` (kể cả lồng nhau).
 - Bảng có cột "Mã ngành": tự xoá dòng trống, đánh lại STT.
 - **Khối điều kiện:** `[[#TEN_TRUONG]]` … `[[/TEN_TRUONG]]`. Trường rỗng thì xoá cả khối, có giá trị thì chỉ xoá 2 dòng đánh dấu. Khối lồng nhau được.
+- **Khối ngược:** `[[^TEN_TRUONG]]` … `[[/TEN_TRUONG]]`: chỉ giữ khi trường rỗng (dòng chấm để viết tay).
 - **Dòng bảng có điều kiện:** đoạn `[[?TEN_TRUONG]]` trong một ô. Trường rỗng thì xoá cả dòng (dùng khi cần tự thêm vào mẫu).
 - Tự bỏ chú thích chân trang không còn được tham chiếu.
 - Gỡ liên kết Mail Merge để mở file không bị Word hỏi nguồn dữ liệu.

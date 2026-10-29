@@ -35,6 +35,7 @@ set "CAN_CAI="
 if not exist "node_modules" set "CAN_CAI=1"
 rem Thư viện mới thêm (đọc PDF) chưa có thì cài bổ sung
 if not exist "node_modules\pdfjs-dist" set "CAN_CAI=1"
+if not exist "node_modules\pdf-lib" set "CAN_CAI=1"
 if defined CAN_CAI (
   echo  [1/5] Cài thư viện lần đầu, mất vài phút...
   call npm install
@@ -45,6 +46,18 @@ if defined CAN_CAI (
   )
 ) else (
   echo  [1/5] Thư viện đã có sẵn.
+)
+
+rem ---- 2b. Python đọc PDF giấy phép (không bắt buộc: thiếu thì web dùng AI) ----
+where python >nul 2>nul
+if not errorlevel 1 (
+  python -c "import pdfminer, fontTools" >nul 2>nul
+  if errorlevel 1 (
+    echo  Cài thư viện Python đọc PDF giấy phép ^(pdfminer.six, fonttools^)...
+    python -m pip install --quiet pdfminer.six fonttools
+  )
+) else (
+  echo  [Lưu ý] Chưa có Python: đọc giấy phép sẽ dùng AI. Cài Python tại https://python.org để đọc PDF chính xác hơn.
 )
 
 rem ---- 3. Chuẩn bị cloudflared ----

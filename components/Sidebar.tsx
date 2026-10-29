@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, MessageSquare, Image as ImageIcon, Scale, KeyRound } from 'lucide-react';
+import { FileText, MessageSquare, Image as ImageIcon, Scale, KeyRound, Files } from 'lucide-react';
 import { getAISettings, isConfigured, maskKey, AI_SETTINGS_EVENT, isServerMode } from '../services/aiSettings';
 
 interface SidebarProps {
-  currentView: 'documents' | 'chat' | 'brand';
-  onChangeView: (view: 'documents' | 'chat' | 'brand') => void;
+  currentView: 'documents' | 'chat' | 'brand' | 'merge';
+  onChangeView: (view: 'documents' | 'chat' | 'brand' | 'merge') => void;
   onOpenSettings: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
@@ -36,6 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onOpenSett
   const isGemini = settings.provider === 'gemini';
   const navItems = [
     { id: 'documents', label: 'Soạn hồ sơ', icon: FileText },
+    { id: 'merge', label: 'Gộp file PDF', icon: Files },
     { id: 'chat', label: 'Tư vấn pháp lý', icon: MessageSquare },
     { id: 'brand', label: 'Thương hiệu', icon: ImageIcon },
   ] as const;

@@ -1,0 +1,6 @@
+Thư mục mẫu cho "Hồ sơ sau thành lập" trên web LegalBiz.
+
+- Chép các file mẫu Word (.docx) vào đây (giống thư mục "mau" của tool dien_mau.py).
+- Trong mẫu, chỗ cần điền ghi dạng {{TEN_TRUONG}}, ví dụ {{TEN_CONG_TY}}, {{MST}}, {{CO_QUAN_THUE}}.
+- Chép xong, trên web bấm "Tải lại" ở mục "2. Mẫu cần điền".
+Danh sách trường: xem README.md, mục "4c. Hồ sơ sau thành lập".

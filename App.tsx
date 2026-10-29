@@ -4,11 +4,12 @@ import Sidebar from './components/Sidebar';
 import DocumentGenerator from './components/DocumentGenerator';
 import LegalChat from './components/LegalChat';
 import BrandStudio from './components/BrandStudio';
+import GopFile from './components/GopFile';
 import ApiSettings from './components/ApiSettings';
 import AiWaitToast from './components/AiWaitToast';
 import { isConfigured } from './services/aiSettings';
 
-type View = 'documents' | 'chat' | 'brand';
+type View = 'documents' | 'chat' | 'brand' | 'merge';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('documents');
@@ -49,6 +50,7 @@ function App() {
           {currentView === 'documents' && <DocumentGenerator />}
           {currentView === 'chat' && <LegalChat />}
           {currentView === 'brand' && <BrandStudio />}
+          {currentView === 'merge' && <GopFile />}
         </div>
       </main>
 

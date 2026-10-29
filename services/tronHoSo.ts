@@ -256,9 +256,10 @@ const xuLyBangNganh = (doc: Document): { removed: number; warnings: string[] } =
 /**
  * Khối điều kiện: đoạn chỉ chứa "[[#TEN_TRUONG]]" mở khối, "[[/TEN_TRUONG]]" đóng khối.
  * Trường rỗng -> xoá cả khối (kể cả bảng bên trong); có giá trị -> chỉ xoá 2 dòng đánh dấu. Khối được lồng nhau.
+ * Khối ngược "[[^TEN_TRUONG]]" … "[[/TEN_TRUONG]]": chỉ giữ khi trường RỖNG (ví dụ dòng chấm để viết tay).
  */
 const xuLyKhoi = (doc: Document, rec: MergeRecord): number => {
-  const re = /^\[\[([#/])([A-Za-z0-9_]+)\]\]$/;
+  const re = /^\[\[([#/^])([A-Za-z0-9_]+)\]\]$/;
   const mark = (el: Element) => (isW(el, 'p') ? (descW(el, 't').map((t) => t.textContent || '').join('').trim().match(re)) : null);
   let removedBlocks = 0;
   // Dòng bảng có điều kiện: đoạn "[[?TEN_TRUONG]]" trong một ô -> xoá cả dòng khi trường rỗng
@@ -273,9 +274,10 @@ const xuLyKhoi = (doc: Document, rec: MergeRecord): number => {
   }
   for (;;) {
     const all = descW(doc, 'p');
-    const open = all.find((p) => mark(p)?.[1] === '#');
+    const open = all.find((p) => { const k = mark(p)?.[1]; return k === '#' || k === '^'; });
     if (!open) break;
     const name = mark(open)![2];
+    const nguoc = mark(open)![1] === '^';
     const parent = open.parentNode!;
     let close: Element | null = null;
     for (let n = open.nextElementSibling; n; n = n.nextElementSibling) {
@@ -284,7 +286,7 @@ const xuLyKhoi = (doc: Document, rec: MergeRecord): number => {
     }
     const val = (rec[name.toUpperCase()] ?? '').trim();
     if (!close) { parent.removeChild(open); continue; }
-    if (!val) {
+    if (nguoc ? !!val : !val) {
       let n: Element | null = open;
       while (n) { const next: Element | null = n === close ? null : n.nextElementSibling; parent.removeChild(n); n = next; }
       removedBlocks++;
