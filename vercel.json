@@ -1,10 +1,13 @@
 {
   "functions": {
-    "api/ai.js": { "maxDuration": 300 }
+    "api/ai.js": { "maxDuration": 300 },
+    "api/stl.js": { "includeFiles": "mau-sau-thanh-lap/**" }
   },
   "rewrites": [
     { "source": "/__ai/config", "destination": "/api/ai?kind=config" },
     { "source": "/ai-api/:path*", "destination": "/api/ai?kind=openai&path=:path*" },
-    { "source": "/gemini-api/:path*", "destination": "/api/ai?kind=gemini&path=:path*" }
+    { "source": "/gemini-api/:path*", "destination": "/api/ai?kind=gemini&path=:path*" },
+    { "source": "/__mau-stl/config", "destination": "/api/stl?kind=config" },
+    { "source": "/__mau-stl", "destination": "/api/stl" }
   ]
 }

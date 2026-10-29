@@ -1,10 +1,26 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import DocumentGenerator from './components/DocumentGenerator';
 import LegalChat from './components/LegalChat';
 import BrandStudio from './components/BrandStudio';
-import GopFile from './components/GopFile';
+// Tải riêng trang Gộp file: thiếu thư viện (chưa npm install) thì chỉ trang này báo lỗi, các trang khác vẫn chạy
+const GopFile = lazy(() => import('./components/GopFile'));
+
+class LoiTrang extends React.Component<{ children: React.ReactNode }, { loi: string | null }> {
+  state = { loi: null as string | null };
+  static getDerivedStateFromError(e: unknown) { return { loi: e instanceof Error ? e.message : String(e) }; }
+  render() {
+    if (!this.state.loi) return this.props.children;
+    return (
+      <div className="max-w-2xl mx-auto mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+        <p className="font-semibold text-lg mb-2">Chưa mở được trang này</p>
+        <p className="text-sm mb-3">Thường do máy chủ chưa cài thư viện mới. Tắt cửa sổ web, chạy lại <b>start-public.bat</b> (hoặc chạy <code>npm install</code> trong thư mục dự án) rồi mở lại.</p>
+        <p className="text-xs text-amber-700 break-all">Chi tiết: {this.state.loi}</p>
+      </div>
+    );
+  }
+}
 import ApiSettings from './components/ApiSettings';
 import AiWaitToast from './components/AiWaitToast';
 import { isConfigured } from './services/aiSettings';
@@ -50,7 +66,11 @@ function App() {
           {currentView === 'documents' && <DocumentGenerator />}
           {currentView === 'chat' && <LegalChat />}
           {currentView === 'brand' && <BrandStudio />}
-          {currentView === 'merge' && <GopFile />}
+          {currentView === 'merge' && (
+            <LoiTrang>
+              <Suspense fallback={<p className="text-slate-500">Đang tải...</p>}><GopFile /></Suspense>
+            </LoiTrang>
+          )}
         </div>
       </main>
 

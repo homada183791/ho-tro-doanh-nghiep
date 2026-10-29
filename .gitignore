@@ -25,3 +25,7 @@ dist-ssr
 
 # Công cụ public web (cloudflared, mật khẩu, log)
 tools/
+
+# Python
+__pycache__/
+*.pyc
