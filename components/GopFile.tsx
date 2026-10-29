@@ -32,7 +32,7 @@ const GopFile: React.FC = () => {
     if (!hopLe.length) { if (list.length) ghi('Không có file .docx hoặc .pdf mới để thêm.'); return; }
     for (const f of hopLe) {
       setDangXuLy(`Đang xử lý: ${f.name}`);
-      ghi(`Đang xử lý: ${f.name}${/\.docx$/i.test(f.name) ? ' (đổi Word sang PDF trên máy chủ)' : ''}...`);
+      ghi(`Đang xử lý: ${f.name}${/\.docx$/i.test(f.name) ? ' (đổi Word sang PDF)' : ''}...`);
       try {
         const n = await docNguon(f);
         nguon.current.set(n.id, n);

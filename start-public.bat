@@ -36,6 +36,7 @@ if not exist "node_modules" set "CAN_CAI=1"
 rem Thư viện mới thêm (đọc PDF) chưa có thì cài bổ sung
 if not exist "node_modules\pdfjs-dist" set "CAN_CAI=1"
 if not exist "node_modules\pdf-lib" set "CAN_CAI=1"
+if not exist "node_modules\docx-preview" set "CAN_CAI=1"
 if defined CAN_CAI (
   echo  [1/5] Cài thư viện lần đầu, mất vài phút...
   call npm install

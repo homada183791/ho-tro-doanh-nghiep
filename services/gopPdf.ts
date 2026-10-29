@@ -21,14 +21,72 @@ const laPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name
 const laDocx = (f: File) => /\.docx$/i.test(f.name);
 export const fileHopLe = (f: File) => (laPdf(f) || laDocx(f)) && !f.name.startsWith('~$');
 
-/** Word -> PDF trên máy chủ. */
+/**
+ * Word -> PDF ngay trên trình duyệt (dùng khi máy chủ không đổi được, ví dụ bản trên Vercel).
+ * Vẽ file Word bằng docx-preview trong khung ẩn, chụp từng trang thành ảnh rồi ghép thành PDF khổ A4.
+ * Bố cục gần giống Word nhưng không tuyệt đối; muốn chuẩn như Word thì mở web trên máy chủ (localhost).
+ */
+export const docxSangPdfTrinhDuyet = async (f: File): Promise<Uint8Array> => {
+  const [{ renderAsync }, { default: html2canvas }] = await Promise.all([import('docx-preview'), import('html2canvas')]);
+  const khung = document.createElement('iframe');
+  khung.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;visibility:hidden';
+  document.body.appendChild(khung);
+  try {
+    const doc = khung.contentDocument!;
+    doc.open(); doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#fff"></body></html>'); doc.close();
+    const noiDung = doc.createElement('div');
+    const kieu = doc.createElement('div');
+    doc.body.append(kieu, noiDung);
+    await renderAsync(await f.arrayBuffer(), noiDung, kieu, {
+      inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: false, ignoreWidth: false, ignoreHeight: false,
+      experimental: true, renderHeaders: true, renderFooters: true, useBase64URL: true,
+    });
+    await (doc as any).fonts?.ready;
+    await new Promise((r) => setTimeout(r, 150));
+    const trang = [...noiDung.querySelectorAll<HTMLElement>('section.docx')];
+    if (!trang.length) throw new Error('Không đọc được nội dung file Word');
+    const out = await PDFDocument.create();
+    const A4 = [595.28, 841.89] as const;
+    for (const s of trang) {
+      s.style.margin = '0'; s.style.boxShadow = 'none';
+      const c = await html2canvas(s, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true, windowWidth: 900 });
+      // Trang dài hơn khổ A4 (nội dung tự tràn): cắt thành nhiều trang A4
+      const caoTrang = Math.round(c.width * (A4[1] / A4[0]));
+      for (let y = 0; y < c.height; y += caoTrang) {
+        const h = Math.min(caoTrang, c.height - y);
+        if (y > 0 && h < caoTrang * 0.04) break; // bỏ mẩu thừa quá nhỏ
+        const p = document.createElement('canvas');
+        p.width = c.width; p.height = caoTrang;
+        const ctx = p.getContext('2d')!;
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, p.width, p.height);
+        ctx.drawImage(c, 0, y, c.width, h, 0, 0, c.width, h);
+        const jpg = await out.embedJpg(await (await fetch(p.toDataURL('image/jpeg', 0.9))).arrayBuffer());
+        out.addPage([...A4]).drawImage(jpg, { x: 0, y: 0, width: A4[0], height: A4[1] });
+      }
+    }
+    return out.save();
+  } finally {
+    khung.remove();
+  }
+};
+
+/** Word -> PDF: ưu tiên máy chủ (LibreOffice/Word, chuẩn nhất); máy chủ không có thì đổi trên trình duyệt. */
 export const docxSangPdf = async (f: File): Promise<Uint8Array> => {
-  const r = await fetch('/__docx-pdf', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) }, body: f });
-  const type = r.headers.get('content-type') || '';
-  if (r.ok && type.includes('application/pdf')) return new Uint8Array(await r.arrayBuffer());
-  let lyDo = `lỗi ${r.status}`;
-  try { const j = await r.json(); lyDo = j.error || lyDo; } catch { /* bỏ qua */ }
-  throw new Error(lyDo);
+  let r: Response | null = null;
+  try {
+    r = await fetch('/__docx-pdf', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) }, body: f });
+  } catch { /* mất mạng tới máy chủ: đổi trên trình duyệt */ }
+  if (r) {
+    const type = r.headers.get('content-type') || '';
+    if (r.ok && type.includes('application/pdf')) return new Uint8Array(await r.arrayBuffer());
+    // 404/405: máy chủ không có chức năng này (bản Vercel). Lỗi khác: máy chủ có nhưng đổi hỏng -> báo lỗi rõ.
+    if (![404, 405].includes(r.status)) {
+      let lyDo = `lỗi ${r.status}`;
+      try { const j = await r.json(); lyDo = j.error || lyDo; } catch { /* bỏ qua */ }
+      try { return await docxSangPdfTrinhDuyet(f); } catch { throw new Error(lyDo); }
+    }
+  }
+  return docxSangPdfTrinhDuyet(f);
 };
 
 /** Đọc 1 file (PDF hoặc Word) thành nguồn PDF. */
