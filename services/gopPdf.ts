@@ -41,27 +41,70 @@ export const docxSangPdfTrinhDuyet = async (f: File): Promise<Uint8Array> => {
       inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: false, ignoreWidth: false, ignoreHeight: false,
       experimental: true, renderHeaders: true, renderFooters: true, useBase64URL: true,
     });
+    // Bảng: giữ đúng độ rộng cột như Word (không để chữ dài kéo giãn cột)
+    const st = doc.createElement('style');
+    st.textContent = 'section.docx table{table-layout:fixed!important}section.docx td,section.docx th{overflow-wrap:anywhere;word-break:break-word}';
+    doc.head.appendChild(st);
+    // Chữ có nền trắng (hay gặp khi chép từ web vào Word) mà xuống dòng: công cụ chụp vẽ ô nền trùm lên cả dòng trên
+    // làm mất chữ. Giấy vốn trắng nên bỏ nền trắng đi không làm khác hình thức.
+    const win = khung.contentWindow!;
+    noiDung.querySelectorAll<HTMLElement>('section.docx span, section.docx a').forEach((el) => {
+      const bg = win.getComputedStyle(el).backgroundColor.replace(/\s/g, '');
+      if (bg === 'rgb(255,255,255)' || bg === 'rgba(255,255,255,1)') el.style.backgroundColor = 'transparent';
+    });
     await (doc as any).fonts?.ready;
     await new Promise((r) => setTimeout(r, 150));
     const trang = [...noiDung.querySelectorAll<HTMLElement>('section.docx')];
     if (!trang.length) throw new Error('Không đọc được nội dung file Word');
     const out = await PDFDocument.create();
-    const A4 = [595.28, 841.89] as const;
+    const SCALE = 2;
     for (const s of trang) {
       s.style.margin = '0'; s.style.boxShadow = 'none';
-      const c = await html2canvas(s, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true, windowWidth: 900 });
-      // Trang dài hơn khổ A4 (nội dung tự tràn): cắt thành nhiều trang A4
-      const caoTrang = Math.round(c.width * (A4[1] / A4[0]));
-      for (let y = 0; y < c.height; y += caoTrang) {
-        const h = Math.min(caoTrang, c.height - y);
-        if (y > 0 && h < caoTrang * 0.04) break; // bỏ mẩu thừa quá nhỏ
+      const cs = khung.contentWindow!.getComputedStyle(s);
+      const W = s.offsetWidth;
+      // Khổ giấy lấy từ file Word (min-height = chiều cao trang); không có thì A4
+      const H = parseFloat(cs.minHeight) || Math.round(W * 297 / 210);
+      const leTren = parseFloat(cs.paddingTop) || 0, leDuoi = parseFloat(cs.paddingBottom) || 0;
+      const r0 = s.getBoundingClientRect();
+      const tong = s.scrollHeight;
+      // Điểm có thể sang trang: cuối mỗi đoạn văn (không nằm trong ô bảng), cuối mỗi dòng bảng, cuối ảnh
+      const diem = new Set<number>();
+      s.querySelectorAll<HTMLElement>('p, tr, img, li, h1, h2, h3, h4, h5, h6').forEach((el) => {
+        if ((el.tagName !== 'TR' && el.closest('tr')) || el.closest('header, footer')) return; // bỏ đầu/chân trang
+        const b = Math.round(el.getBoundingClientRect().bottom - r0.top);
+        if (b > 0) diem.add(b);
+      });
+      const ds = [...diem].sort((x, y) => x - y);
+      // Chia trang: nội dung vừa 1 trang thì giữ nguyên cả trang; tràn thì ngắt ở cuối đoạn/dòng bảng gần nhất,
+      // các trang tràn thêm lại lề trên. "cuoi" = đáy của nội dung thật (không tính khoảng trắng dưới cùng).
+      const cuoi = ds.length ? Math.max(...ds) : tong;
+      const doan: [number, number][] = [];
+      if (cuoi <= H - leDuoi + 4) doan.push([0, Math.max(H, 1)]);
+      else {
+        let dau = 0;
+        while (dau < cuoi - 2) {
+          const toiDa = dau + (H - leDuoi - (doan.length ? leTren : 0));
+          if (toiDa >= cuoi) { doan.push([dau, cuoi]); break; }
+          const hop = ds.filter((b) => b > dau + 20 && b <= toiDa);
+          const den = hop.length ? hop[hop.length - 1] : toiDa; // không có chỗ ngắt đẹp: cắt cứng
+          doan.push([dau, den]);
+          dau = den;
+        }
+      }
+      // Chụp cả trang 1 lần (mỗi trang Word là 1 phần riêng nên ảnh không quá lớn), rồi cắt theo các đoạn đã chia
+      const c = await html2canvas(s, { scale: SCALE, backgroundColor: '#ffffff', logging: false, useCORS: true, windowWidth: 900 });
+      const k = c.height / Math.max(1, tong);
+      for (let i = 0; i < doan.length; i++) {
+        const [y0, y1] = doan[i];
         const p = document.createElement('canvas');
-        p.width = c.width; p.height = caoTrang;
+        p.width = c.width; p.height = Math.round(H * k);
         const ctx = p.getContext('2d')!;
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, p.width, p.height);
-        ctx.drawImage(c, 0, y, c.width, h, 0, 0, c.width, h);
-        const jpg = await out.embedJpg(await (await fetch(p.toDataURL('image/jpeg', 0.9))).arrayBuffer());
-        out.addPage([...A4]).drawImage(jpg, { x: 0, y: 0, width: A4[0], height: A4[1] });
+        const sy = Math.round(y0 * k), sh = Math.min(c.height - sy, Math.round((y1 - y0) * k));
+        if (sh > 0) ctx.drawImage(c, 0, sy, c.width, sh, 0, i ? Math.round(leTren * k) : 0, c.width, sh);
+        const jpg = await out.embedJpg(await (await fetch(p.toDataURL('image/jpeg', 0.92))).arrayBuffer());
+        const kho: [number, number] = [W * 0.75, H * 0.75]; // px -> pt
+        out.addPage(kho).drawImage(jpg, { x: 0, y: 0, width: kho[0], height: kho[1] });
       }
     }
     return out.save();
