@@ -19,7 +19,35 @@ const pdfjs = () => (pdfjsP ??= (async () => {
 
 const laPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 const laDocx = (f: File) => /\.docx$/i.test(f.name);
-export const fileHopLe = (f: File) => (laPdf(f) || laDocx(f)) && !f.name.startsWith('~$');
+const laAnh = (f: File) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name);
+export const fileHopLe = (f: File) => (laPdf(f) || laDocx(f) || laAnh(f)) && !f.name.startsWith('~$');
+/** Các loại file chọn được ở ô "Thêm file". */
+export const LOAI_FILE = '.pdf,.docx,application/pdf,image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp';
+
+/**
+ * Ảnh -> PDF 1 trang khổ A4 (dọc hoặc ngang theo ảnh), ảnh nằm giữa, lề 1 cm, giữ đúng tỉ lệ.
+ * JPG/PNG nhúng nguyên chất lượng; loại khác (WebP, GIF, BMP) đổi sang PNG trước.
+ */
+export const anhSangPdf = async (f: File): Promise<Uint8Array> => {
+  const goc = new Uint8Array(await f.arrayBuffer());
+  const out = await PDFDocument.create();
+  let anh;
+  if (/jpe?g/i.test(f.type) || /\.jpe?g$/i.test(f.name)) anh = await out.embedJpg(goc);
+  else if (/png/i.test(f.type) || /\.png$/i.test(f.name)) anh = await out.embedPng(goc);
+  else {
+    const bmp = await createImageBitmap(f);
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(bmp, 0, 0);
+    anh = await out.embedPng(await (await fetch(c.toDataURL('image/png'))).arrayBuffer());
+  }
+  const ngang = anh.width > anh.height;
+  const [W, H] = ngang ? [841.89, 595.28] : [595.28, 841.89];
+  const le = 28.35; // 1 cm
+  const k = Math.min((W - 2 * le) / anh.width, (H - 2 * le) / anh.height);
+  const w = anh.width * k, h = anh.height * k;
+  out.addPage([W, H]).drawImage(anh, { x: (W - w) / 2, y: (H - h) / 2, width: w, height: h });
+  return out.save();
+};
 
 /**
  * Word -> PDF ngay trên trình duyệt (dùng khi máy chủ không đổi được, ví dụ bản trên Vercel).
@@ -132,9 +160,9 @@ export const docxSangPdf = async (f: File): Promise<Uint8Array> => {
   return docxSangPdfTrinhDuyet(f);
 };
 
-/** Đọc 1 file (PDF hoặc Word) thành nguồn PDF. */
+/** Đọc 1 file (PDF, Word hoặc ảnh) thành nguồn PDF. */
 export const docNguon = async (f: File): Promise<NguonPdf> => {
-  const bytes = laPdf(f) ? new Uint8Array(await f.arrayBuffer()) : await docxSangPdf(f);
+  const bytes = laPdf(f) ? new Uint8Array(await f.arrayBuffer()) : laAnh(f) ? await anhSangPdf(f) : await docxSangPdf(f);
   const lib = await pdfjs();
   const doc = await lib.getDocument({ data: bytes.slice() }).promise;
   const soTrang = doc.numPages;

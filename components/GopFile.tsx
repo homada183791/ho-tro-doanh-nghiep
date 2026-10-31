@@ -4,7 +4,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { Files, FolderPlus, Plus, Trash2, X, ZoomIn, Loader2, Download, GripVertical, FileWarning, Scissors } from 'lucide-react';
-import { docNguon, tachTrang, anhLon, gopTrang, fileHopLe, tenNhom, tenFileSach, type NguonPdf, type TrangGop } from '../services/gopPdf';
+import { docNguon, tachTrang, anhLon, gopTrang, fileHopLe, LOAI_FILE, tenNhom, tenFileSach, type NguonPdf, type TrangGop } from '../services/gopPdf';
 import KetQuaFile, { type FileKetQua } from './KetQuaFile';
 
 /** Màu nhãn theo file gốc (giống Smallpdf: trang cùng file cùng màu). */
@@ -38,7 +38,7 @@ const GopFile: React.FC = () => {
       if (daThem.current.has(k)) return false;
       daThem.current.add(k); return true;
     }).sort((a, b) => a.name.localeCompare(b.name, 'vi', { numeric: true }));
-    if (!hopLe.length) { if (list.length) ghi('Không có file .docx hoặc .pdf mới để thêm.'); return; }
+    if (!hopLe.length) { if (list.length) ghi('Không có file PDF, Word hoặc ảnh mới để thêm.'); return; }
     for (const f of hopLe) {
       setDangXuLy(`Đang xử lý: ${f.name}`);
       ghi(`Đang xử lý: ${f.name}${/\.docx$/i.test(f.name) ? ' (đổi Word sang PDF)' : ''}...`);
@@ -100,7 +100,7 @@ const GopFile: React.FC = () => {
   const tenPhan = (ds: TrangGop[], i: number) => {
     const cungNguon = ds.every((t) => t.nguonId === ds[0].nguonId);
     if (!cungNguon) return `${tenFileSach(tenKq, 'ket_qua_gop')}-phan-${i + 1}`;
-    const goc = tenFileSach(ds[0].ten.replace(/\.(pdf|docx)$/i, ''), `phan-${i + 1}`);
+    const goc = tenFileSach(ds[0].ten.replace(/\.(pdf|docx|jpe?g|png|webp|gif|bmp)$/i, ''), `phan-${i + 1}`);
     const du = ds.length === ds[0].tong && ds.every((t, j) => t.trang === j + 1);
     return du ? goc : `${goc}-trang-${tenNhom(ds.map((t) => t.trang))}`;
   };
@@ -143,7 +143,7 @@ const GopFile: React.FC = () => {
 
   return (
     <div>
-      <p className="text-slate-500 mb-4">Thêm file Word hoặc PDF: mỗi trang tự tách thành 1 thẻ có ảnh xem trước. Kéo thả để sắp thứ tự trang, rồi gộp thành 1 file PDF. Bấm cây kéo giữa 2 trang để tách thành nhiều file.</p>
+      <p className="text-slate-500 mb-4">Thêm file Word, PDF hoặc ảnh (JPG, PNG...): mỗi trang (mỗi ảnh) tự tách thành 1 thẻ có ảnh xem trước. Kéo thả để sắp thứ tự trang, rồi gộp thành 1 file PDF. Bấm cây kéo giữa 2 trang để tách thành nhiều file.</p>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <label className="flex items-center gap-2 text-sm text-slate-700 mr-2">
@@ -162,7 +162,7 @@ const GopFile: React.FC = () => {
         </label>
         <label className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium flex items-center gap-1.5 cursor-pointer">
           <Plus className="w-4 h-4" /> Thêm file
-          <input type="file" className="hidden" multiple accept=".pdf,.docx,application/pdf" aria-label="Thêm file Word hoặc PDF"
+          <input type="file" className="hidden" multiple accept={LOAI_FILE} aria-label="Thêm file Word hoặc PDF"
             onChange={(e) => { const l = Array.from(e.target.files || []); e.target.value = ''; themFile(l); }} />
         </label>
       </div>
@@ -176,7 +176,7 @@ const GopFile: React.FC = () => {
         {!trang.length && !dangXuLy && (
           <div className="h-[280px] flex flex-col items-center justify-center text-center text-slate-500 text-sm gap-2">
             <Files className="w-10 h-10 text-slate-400" />
-            <p>Chưa có trang nào. Bấm <b>Thêm file</b> hoặc kéo file Word/PDF vào đây.</p>
+            <p>Chưa có trang nào. Bấm <b>Thêm file</b> hoặc kéo file Word, PDF hoặc ảnh vào đây.</p>
             <p>Mỗi trang trong file sẽ tách thành 1 thẻ riêng — kéo thả để sắp xếp lại thứ tự trang.</p>
           </div>
         )}

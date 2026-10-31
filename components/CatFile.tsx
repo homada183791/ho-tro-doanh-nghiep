@@ -6,7 +6,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Scissors, Upload, Loader2, RotateCcw, ZoomIn } from 'lucide-react';
-import { docNguon, tachTrang, anhLon, fileHopLe, catPdf, docKhoangTrang, nhomTuVetCat, tenNhom, tenFileSach, type NguonPdf, type TrangGop } from '../services/gopPdf';
+import { docNguon, tachTrang, anhLon, fileHopLe, LOAI_FILE, catPdf, docKhoangTrang, nhomTuVetCat, tenNhom, tenFileSach, type NguonPdf, type TrangGop } from '../services/gopPdf';
 import KetQuaFile, { type FileKetQua } from './KetQuaFile';
 
 const MAU = ['bg-blue-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-violet-600', 'bg-cyan-700'];
@@ -25,7 +25,7 @@ const CatFile: React.FC = () => {
   const [tha, setTha] = useState(false);
   const [phongTo, setPhongTo] = useState<{ so: number; anh?: string } | null>(null);
 
-  const goc = nguon ? tenFileSach(nguon.ten.replace(/\.(pdf|docx)$/i, ''), 'file') : 'file';
+  const goc = nguon ? tenFileSach(nguon.ten.replace(/\.(pdf|docx|jpe?g|png|webp|gif|bmp)$/i, ''), 'file') : 'file';
   const tong = trang.length;
   const nhom = useMemo(() => nhomTuyChon ?? (tong ? nhomTuVetCat(tong, cat) : []), [nhomTuyChon, tong, cat]);
   const phanCuaTrang = useMemo(() => {
@@ -36,14 +36,14 @@ const CatFile: React.FC = () => {
 
   const moFile = async (f?: File) => {
     if (!f) return;
-    if (!fileHopLe(f)) { setLoi('Chỉ cắt được file .pdf hoặc .docx'); return; }
+    if (!fileHopLe(f)) { setLoi('Chỉ dùng được file PDF, Word hoặc ảnh'); return; }
     setLoi(null); setKetQua(null); setCat(new Set()); setNhomTuyChon(null); setKhoang(''); setTrang([]); setNguon(null);
     setDangDoc(`Đang đọc ${f.name}${/\.docx$/i.test(f.name) ? ' (đổi Word sang PDF)' : ''}...`);
     try {
       const n = await docNguon(f);
       const ds = await tachTrang(n);
       setNguon(n); setTrang(ds);
-      setTenZip(`${tenFileSach(n.ten.replace(/\.(pdf|docx)$/i, ''), 'file')}-cat`);
+      setTenZip(`${tenFileSach(n.ten.replace(/\.(pdf|docx|jpe?g|png|webp|gif|bmp)$/i, ''), 'file')}-cat`);
     } catch (e) {
       setLoi(`Không đọc được '${f.name}': ${e instanceof Error ? e.message : String(e)}`);
     } finally { setDangDoc(null); }
@@ -97,10 +97,10 @@ const CatFile: React.FC = () => {
         onDrop={(e) => { e.preventDefault(); setTha(false); moFile(e.dataTransfer.files[0]); }}>
         {dangDoc ? (<><Loader2 className="w-10 h-10 animate-spin text-blue-600" /><p className="text-slate-600">{dangDoc}</p></>) : (<>
           <Scissors className="w-10 h-10 text-slate-400" />
-          <p className="text-slate-600">Kéo 1 file PDF hoặc Word vào đây để cắt thành nhiều file nhỏ</p>
+          <p className="text-slate-600">Kéo 1 file PDF, Word hoặc ảnh vào đây để cắt thành nhiều file nhỏ</p>
           <label className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium flex items-center gap-1.5 cursor-pointer">
             <Upload className="w-4 h-4" /> Chọn file
-            <input type="file" className="hidden" accept=".pdf,.docx,application/pdf" aria-label="Chọn file để cắt"
+            <input type="file" className="hidden" accept={LOAI_FILE} aria-label="Chọn file để cắt"
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; moFile(f); }} />
           </label>
         </>)}
