@@ -81,7 +81,31 @@ export const docxSangPdfTrinhDuyet = async (f: File): Promise<Uint8Array> => {
       if (bg === 'rgb(255,255,255)' || bg === 'rgba(255,255,255,1)') el.style.backgroundColor = 'transparent';
     });
     await (doc as any).fonts?.ready;
-    await new Promise((r) => setTimeout(r, 150));
+    // docx-preview tính độ rộng phím Tab sau 500 ms: phải đợi xong mới chụp, nếu không các dòng căn bằng Tab bị dồn trái
+    await new Promise((r) => setTimeout(r, 800));
+    // Tab nhảy tới điểm dừng quá xa làm chữ phía sau rớt xuống dòng (Word thì dừng ở thụt lề treo): thu Tab lại
+    noiDung.querySelectorAll<HTMLElement>('section.docx .docx-tab-stop').forEach((tab) => {
+      const p = tab.closest('p');
+      if (!p) return;
+      const r = tab.getBoundingClientRect();
+      // Tab đầu đoạn (trước nó chưa có chữ) mà dài quá nửa dòng: chắc chắn sai (Word chỉ thụt vào một chút)
+      const truoc = doc.createRange();
+      truoc.setStart(p, 0); truoc.setEndBefore(tab);
+      if (!truoc.toString().trim() && r.width > p.getBoundingClientRect().width * 0.4) { tab.style.wordSpacing = '0pt'; return; }
+      const w = doc.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      w.currentNode = tab;
+      let n: Node | null;
+      while ((n = w.nextNode())) {
+        if (tab.contains(n)) continue;
+        const t = n.textContent || '';
+        const i = t.search(/\S/);
+        if (i < 0) continue;
+        const rg = doc.createRange();
+        rg.setStart(n, i); rg.setEnd(n, i + 1);
+        if (rg.getBoundingClientRect().top > r.top + r.height / 2) tab.style.wordSpacing = '0pt';
+        break;
+      }
+    });
     const trang = [...noiDung.querySelectorAll<HTMLElement>('section.docx')];
     if (!trang.length) throw new Error('Không đọc được nội dung file Word');
     const out = await PDFDocument.create();
