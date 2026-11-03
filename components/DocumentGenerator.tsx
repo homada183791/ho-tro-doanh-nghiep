@@ -54,7 +54,7 @@ import { SauThanhLapForm } from './SauThanhLapForm';
 import { tinhMoi, coQuanDangKy } from '../services/tinhThanh';
 import { filesThanhAnh } from '../services/pdfAnh';
 import { emptyChange, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
-import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_KEM_THAY_DOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
+import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_UY_QUYEN, MAU_CSH_HUONG_LOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -1283,16 +1283,22 @@ const DocumentGenerator: React.FC = () => {
     try {
         if (isChangeTNHH1) {
             const { headers, values } = buildChangeExcel();
-            // Mẫu 12 cho đổi tên/địa chỉ/vốn/ngành/chủ sở hữu; Mẫu 13 khi đổi người đại diện theo pháp luật
-            const { daiDien, ...khac } = change.cases;
+            // Mẫu 12: luôn có khi có bất kỳ thay đổi nào (kể cả đổi đại diện, vì đổi đại diện kéo theo đổi thông tin
+            //   đăng ký thuế mục Giám đốc). Mẫu 13: khi đổi người đại diện theo pháp luật.
+            //   Giấy ủy quyền: luôn kèm. Danh sách chủ sở hữu hưởng lợi: chỉ khi đổi chủ sở hữu / chủ sở hữu hưởng lợi.
+            const cs = change.cases;
+            const coThayDoi = Object.values(cs).some(Boolean);
+            const canCSH = cs.chuSoHuu || cs.chuHuongLoi;
             const mau = [
-                ...(Object.values(khac).some(Boolean) ? MAU_THAY_DOI_TNHH_1TV : []),
-                ...(daiDien ? [MAU_DOI_DAI_DIEN] : []),
+                ...(coThayDoi ? MAU_THAY_DOI_TNHH_1TV : []),
+                ...(cs.daiDien ? [MAU_DOI_DAI_DIEN] : []),
+                MAU_UY_QUYEN,
+                ...(canCSH ? [MAU_CSH_HUONG_LOI] : []),
             ];
             const cur = buildMailMerge();
             const curRec: Record<string, string> = {};
             cur.headers.forEach((h, i) => { curRec[h] = cur.values[i] ?? ''; });
-            setWordFiles(await tronBoHoSo([...mau, ...MAU_KEM_THAY_DOI], buildChangeWordRecord(headers, values, change, curRec)));
+            setWordFiles(await tronBoHoSo(mau, buildChangeWordRecord(headers, values, change, curRec)));
             return;
         }
         const { headers, values } = buildMailMerge();

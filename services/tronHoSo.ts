@@ -402,11 +402,14 @@ export const MAU_THAY_DOI_TNHH_1TV: MauHoSo[] = [
   { file: '/mau/Mau_ThayDoi_MailMerge.docx', ten: 'GiayDeNghi_ThayDoi', nhan: 'Giấy đề nghị đăng ký thay đổi (Mẫu số 12)' },
 ];
 
+/** Giấy ủy quyền nộp hồ sơ – luôn đi kèm mọi hồ sơ thay đổi. */
+export const MAU_UY_QUYEN: MauHoSo = { file: '/mau/Mau_UyQuyen_MailMerge.docx', ten: 'UyQuyen', nhan: 'Giấy ủy quyền nộp hồ sơ' };
+
+/** Danh sách chủ sở hữu hưởng lợi – chỉ khi có thay đổi chủ sở hữu / chủ sở hữu hưởng lợi. */
+export const MAU_CSH_HUONG_LOI: MauHoSo = { file: '/mau/Mau_CSH_HuongLoi_MailMerge.docx', ten: 'CSH_HuongLoi', nhan: 'Danh sách chủ sở hữu hưởng lợi' };
+
 /** Giấy ủy quyền nộp hồ sơ và Danh sách chủ sở hữu hưởng lợi – dùng chung cho hồ sơ thay đổi. */
-export const MAU_KEM_THAY_DOI: MauHoSo[] = [
-  { file: '/mau/Mau_UyQuyen_MailMerge.docx', ten: 'UyQuyen', nhan: 'Giấy ủy quyền nộp hồ sơ' },
-  { file: '/mau/Mau_CSH_HuongLoi_MailMerge.docx', ten: 'CSH_HuongLoi', nhan: 'Danh sách chủ sở hữu hưởng lợi' },
-];
+export const MAU_KEM_THAY_DOI: MauHoSo[] = [MAU_UY_QUYEN, MAU_CSH_HUONG_LOI];
 
 /** Mẫu số 13: Giấy đề nghị đăng ký thay đổi người đại diện theo pháp luật. */
 export const MAU_DOI_DAI_DIEN: MauHoSo = {
