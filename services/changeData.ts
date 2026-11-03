@@ -249,13 +249,17 @@ export const buildChangeRow = (
   // Mẫu số 13: email, và khung "không có số định danh cá nhân" (dùng khi giấy tờ là hộ chiếu)
   const r = c.newRep;
   const hoChieu = on.daiDien && /hộ chiếu/i.test(loaiGiayTo(r.idNumber, r.idType));
+  // Khung "không có số định danh cá nhân" (Dân tộc, Quốc tịch, Hộ chiếu, Nơi thường trú) nằm chung 1 ô, không xoá được.
+  // Ô nào không điền thì để dấu chấm (.....) cho đúng mẫu, chỉ khi đang đổi người đại diện (có in Mẫu 13).
+  const CHAM = '.'.repeat(20);
+  const chamNeuTrong = (v: string) => (on.daiDien ? (v && v.trim() ? v : CHAM) : '');
   add('DD_MOI_EMAIL', on.daiDien ? r.email : '');
-  add('DD_MOI_DAN_TOC', '');
-  add('DD_MOI_QUOC_TICH', hoChieu ? r.country : '');
-  add('DD_MOI_SO_HO_CHIEU', hoChieu ? r.idNumber : '');
-  add('DD_MOI_HC_NGAY_CAP', hoChieu ? r.idDate : '');
-  add('DD_MOI_HC_NOI_CAP', hoChieu ? r.idPlace : '');
-  ['DD_MOI_TT_DIA_CHI', 'DD_MOI_TT_PHUONG_XA', 'DD_MOI_TT_TINH_TP', 'DD_MOI_TT_QUOC_GIA'].forEach((k) => add(k, ''));
+  add('DD_MOI_DAN_TOC', chamNeuTrong(''));
+  add('DD_MOI_QUOC_TICH', chamNeuTrong(hoChieu ? r.country : ''));
+  add('DD_MOI_SO_HO_CHIEU', chamNeuTrong(hoChieu ? r.idNumber : ''));
+  add('DD_MOI_HC_NGAY_CAP', chamNeuTrong(hoChieu ? r.idDate : ''));
+  add('DD_MOI_HC_NOI_CAP', chamNeuTrong(hoChieu ? r.idPlace : ''));
+  ['DD_MOI_TT_DIA_CHI', 'DD_MOI_TT_PHUONG_XA', 'DD_MOI_TT_TINH_TP', 'DD_MOI_TT_QUOC_GIA'].forEach((k) => add(k, chamNeuTrong('')));
   // Số định danh của Chủ tịch công ty (chủ sở hữu cá nhân) – kê khai khi ủy quyền nộp hồ sơ
   add('CHU_TICH_SO_GT', on.daiDien && current.CHU_LOAI !== 'Tổ chức' ? current.CHU_MS_SO_GT : '');
 
