@@ -60,6 +60,9 @@ export interface ChangeData {
   // Số điện thoại nhập thêm (GPKD không ghi): Chủ tịch công ty/Giám đốc và công ty
   sdtGiamDoc: string;
   sdtCongTy: string;
+  // Số Giấy chứng nhận ĐKDN và ngày cấp (cho Giấy ủy quyền kiểu công ty); để trống: lấy mã số DN / ngày đăng ký lần đầu
+  gcnNumber: string;
+  gcnDate: string;
   // 8. Chủ sở hữu hưởng lợi: thông báo trên Giấy đề nghị, chọn đoạn a) hoặc b)
   hlTB: 'a' | 'b';
   // Người ký giấy đề nghị (để trống: tự chọn)
@@ -78,7 +81,7 @@ export const emptyChange = (): ChangeData => ({
   cnTruSo: false, cnTsDetail: '', cnTsWard: '', cnTsCity: '',
   cnLienHe: false, cnNguoi: [],
   hlNguon: '', hl: emptyPerson(),
-  sdtGiamDoc: '', sdtCongTy: '', hlTB: 'b',
+  sdtGiamDoc: '', sdtCongTy: '', gcnNumber: '', gcnDate: '', hlTB: 'b',
   signer: '',
 });
 
@@ -186,6 +189,10 @@ export const buildChangeRow = (
   // Số giấy đề nghị: 01/<ký hiệu tên công ty>-GĐN, ví dụ 01/NJCVN-GĐN
   add('SO_GDN', `01/${kyHieuTen(current.TEN_TV)}-GĐN`);
   add('LAN_THAY_DOI_MOI', gpkd.changeCount ? String(Number(gpkd.changeCount) + 1) : '1');
+  // Quyết định của chủ sở hữu + Giấy ủy quyền công ty
+  add('QD_SO', '01/QĐ');
+  add('GCN_SO', (c.gcnNumber || '').trim() || gpkd.enterpriseCode || '');
+  add('GCN_NGAY_CAP', (c.gcnDate || '').trim() || gpkd.firstRegDate || '');
 
   // Thông tin hiện tại
   CURRENT_COLS.slice(6).forEach((k) => add(k, current[k]));

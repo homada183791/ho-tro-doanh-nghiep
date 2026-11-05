@@ -402,8 +402,14 @@ export const MAU_THAY_DOI_TNHH_1TV: MauHoSo[] = [
   { file: '/mau/Mau_ThayDoi_MailMerge.docx', ten: 'GiayDeNghi_ThayDoi', nhan: 'Giấy đề nghị đăng ký thay đổi (Mẫu số 12)' },
 ];
 
-/** Giấy ủy quyền nộp hồ sơ – luôn đi kèm mọi hồ sơ thay đổi. */
+/** Giấy ủy quyền nộp hồ sơ (kiểu cá nhân) – dùng cho hồ sơ thành lập mới. */
 export const MAU_UY_QUYEN: MauHoSo = { file: '/mau/Mau_UyQuyen_MailMerge.docx', ten: 'UyQuyen', nhan: 'Giấy ủy quyền nộp hồ sơ' };
+
+/** Giấy ủy quyền nộp hồ sơ (kiểu công ty ủy quyền) – dùng cho hồ sơ thay đổi. */
+export const MAU_UY_QUYEN_THAY_DOI: MauHoSo = { file: '/mau/Mau_UyQuyen_ThayDoi_MailMerge.docx', ten: 'UyQuyen', nhan: 'Giấy ủy quyền nộp hồ sơ' };
+
+/** Quyết định của chủ sở hữu – kèm hồ sơ thay đổi khi đổi tên/địa chỉ/vốn/ngành/người đại diện. */
+export const MAU_QUYET_DINH: MauHoSo = { file: '/mau/Mau_QuyetDinh_MailMerge.docx', ten: 'QuyetDinh', nhan: 'Quyết định của chủ sở hữu' };
 
 /** Danh sách chủ sở hữu hưởng lợi – chỉ khi có thay đổi chủ sở hữu / chủ sở hữu hưởng lợi. */
 export const MAU_CSH_HUONG_LOI: MauHoSo = { file: '/mau/Mau_CSH_HuongLoi_MailMerge.docx', ten: 'CSH_HuongLoi', nhan: 'Danh sách chủ sở hữu hưởng lợi' };

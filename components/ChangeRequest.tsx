@@ -858,6 +858,14 @@ export const ChangeCases: React.FC<{
 
       {Object.values(change.cases).some(Boolean) && (
         <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <Field label="Số Giấy chứng nhận ĐKDN" value={change.gcnNumber} onChange={(v) => upd('gcnNumber', v)} placeholder="Để trống = mã số doanh nghiệp" />
+          <Field label="Ngày cấp GCN ĐKDN" value={change.gcnDate} onChange={(v) => upd('gcnDate', v)} placeholder="dd/mm/yyyy (trống = ngày ĐK lần đầu)" />
+          <p className="text-xs text-slate-500">Dùng cho Giấy ủy quyền nộp hồ sơ (phần giới thiệu công ty ủy quyền).</p>
+        </div>
+      )}
+
+      {Object.values(change.cases).some(Boolean) && (
+        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <label className="block md:col-span-2">
             <span className={`${labelCls} flex items-center gap-1`}><PenLine className="w-3 h-3" /> Người ký giấy đề nghị</span>
             <input className={`${inputCls} uppercase`} value={change.signer} onChange={(e) => upd('signer', e.target.value.toUpperCase())}

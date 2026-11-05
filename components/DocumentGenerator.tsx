@@ -54,7 +54,7 @@ import { SauThanhLapForm } from './SauThanhLapForm';
 import { tinhMoi, coQuanDangKy } from '../services/tinhThanh';
 import { filesThanhAnh } from '../services/pdfAnh';
 import { emptyChange, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
-import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_UY_QUYEN, MAU_CSH_HUONG_LOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
+import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_UY_QUYEN_THAY_DOI, MAU_QUYET_DINH, MAU_CSH_HUONG_LOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -1285,14 +1285,17 @@ const DocumentGenerator: React.FC = () => {
             const { headers, values } = buildChangeExcel();
             // Mẫu 12: luôn có khi có bất kỳ thay đổi nào (kể cả đổi đại diện, vì đổi đại diện kéo theo đổi thông tin
             //   đăng ký thuế mục Giám đốc). Mẫu 13: khi đổi người đại diện theo pháp luật.
-            //   Giấy ủy quyền: luôn kèm. Danh sách chủ sở hữu hưởng lợi: chỉ khi đổi chủ sở hữu / chủ sở hữu hưởng lợi.
+            //   Quyết định của chủ sở hữu: khi đổi tên/địa chỉ/vốn/ngành/người đại diện.
+            //   Giấy ủy quyền (kiểu công ty): luôn kèm. Danh sách CSH hưởng lợi: chỉ khi đổi chủ sở hữu / CSH hưởng lợi.
             const cs = change.cases;
             const coThayDoi = Object.values(cs).some(Boolean);
             const canCSH = cs.chuSoHuu || cs.chuHuongLoi;
+            const canQD = cs.doiTen || cs.diaChi || cs.von || cs.nganh || cs.daiDien;
             const mau = [
                 ...(coThayDoi ? MAU_THAY_DOI_TNHH_1TV : []),
                 ...(cs.daiDien ? [MAU_DOI_DAI_DIEN] : []),
-                MAU_UY_QUYEN,
+                ...(canQD ? [MAU_QUYET_DINH] : []),
+                MAU_UY_QUYEN_THAY_DOI,
                 ...(canCSH ? [MAU_CSH_HUONG_LOI] : []),
             ];
             const cur = buildMailMerge();
