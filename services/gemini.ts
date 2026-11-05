@@ -815,7 +815,7 @@ export const extractIdCardInfo = async (
 
 /** Thông tin đọc được từ Giấy chứng nhận đăng ký doanh nghiệp. */
 export interface GpkdInfo {
-  enterpriseCode: string; firstRegDate: string; changeCount: string; lastChangeDate: string;
+  enterpriseCode: string; firstRegDate: string; changeCount: string; lastChangeDate: string; issuer: string;
   companyType: string; name: string; nameEn: string; nameAbbr: string;
   addressDetail: string; addressWard: string; addressCity: string; addressCountry: string;
   phone: string; email: string; website: string; capital: string; capitalInWords: string;
@@ -828,7 +828,7 @@ export interface GpkdInfo {
 }
 
 const GPKD_FIELDS: (keyof GpkdInfo)[] = [
-  'enterpriseCode','firstRegDate','changeCount','lastChangeDate','companyType','name','nameEn','nameAbbr',
+  'enterpriseCode','firstRegDate','changeCount','lastChangeDate','issuer','companyType','name','nameEn','nameAbbr',
   'addressDetail','addressWard','addressCity','addressCountry','phone','email','website','capital','capitalInWords','ownerType',
   'ownerName','ownerGender','ownerDob','ownerIdDocumentType','ownerIdNumber','ownerIdDate','ownerIdPlace',
   'ownerAddressDetail','ownerAddressWard','ownerAddressCity','ownerAddressCountry',
@@ -851,6 +851,8 @@ export const extractBusinessLicense = async (files: { base64: string; mimeType: 
     Nếu giấy có cả "Khối thông tin cũ" và "Khối thông tin mới" thì lấy theo KHỐI THÔNG TIN MỚI.
     Trích xuất CHÍNH XÁC như trên giấy, không suy đoán, không sửa đổi theo quy định mới:
 
+    - issuer: cơ quan cấp giấy, ghi ở GÓC TRÊN CÙNG BÊN TRÁI (khối chữ in hoa phía trên dòng gạch, ví dụ
+      "SỞ KẾ HOẠCH VÀ ĐẦU TƯ THÀNH PHỐ HỒ CHÍ MINH" và dòng dưới "PHÒNG ĐĂNG KÝ KINH DOANH", hoặc "SỞ TÀI CHÍNH ..."). Chép nguyên văn các dòng, nối bằng " | ".
     - enterpriseCode: Mã số doanh nghiệp (chỉ chữ số).
     - firstRegDate: ngày "Đăng ký lần đầu" (DD/MM/YYYY).
     - changeCount: số lần ở dòng "Đăng ký thay đổi lần thứ ..." (chỉ số, ví dụ "4"); chưa thay đổi thì để trống.

@@ -65,6 +65,8 @@ export interface ChangeData {
   sdtCongTy: string;
   // Số Giấy chứng nhận ĐKDN và ngày cấp (cho Giấy ủy quyền kiểu công ty); để trống: lấy mã số DN / ngày đăng ký lần đầu
   gcnNumber: string;
+  // Cơ quan cấp GCN (ghi vào Giấy ủy quyền); trống = theo GPKD đã rút trích, không có thì đoán theo ngày cấp
+  gcnCoQuan: string;
   gcnDate: string;
   // 8. Chủ sở hữu hưởng lợi: thông báo trên Giấy đề nghị, chọn đoạn a) hoặc b)
   hlTB: 'a' | 'b';
@@ -90,7 +92,7 @@ export const emptyChange = (): ChangeData => ({
   cnTruSo: false, cnTsDetail: '', cnTsWard: '', cnTsCity: '',
   cnLienHe: false, cnNguoi: [],
   hlNguon: '', hl: emptyPerson(),
-  sdtGiamDoc: '', sdtCongTy: '', gcnNumber: '', gcnDate: '', hlTB: 'b',
+  sdtGiamDoc: '', sdtCongTy: '', gcnNumber: '', gcnCoQuan: '', gcnDate: '', hlTB: 'b',
   signer: '',
   tnTuNgay: '', tnDenNgay: '', tnLyDo: 'Kinh doanh không hiệu quả', tnSdt: '', tnEmail: '',
   thueEmail: '', rutGhiChu36: true,
@@ -102,6 +104,38 @@ export const emptyChange = (): ChangeData => ({
  */
 export const ghiChuNganhBo = (code: string) =>
   `Ngành, nghề kinh doanh bị ${findVsic(code) ? 'thay đổi' : 'xóa'} theo Quyết định số 36/2025/QĐ-TTg`;
+
+/* ---------- Cơ quan cấp GCN ĐKDN ---------- */
+const VIET_HOA_DIA_DANH = (s: string) =>
+  s.toLowerCase().replace(/(^|\s)(\S)/g, (_m, a, b) => a + b.toUpperCase()).replace(/^Thành Phố /, 'Thành phố ');
+/**
+ * Chuẩn hóa cơ quan cấp đọc ở góc trên bên trái GCN (chữ in hoa, nhiều dòng) thành câu như trong Giấy ủy quyền,
+ * vd "SỞ KẾ HOẠCH VÀ ĐẦU TƯ THÀNH PHỐ HỒ CHÍ MINH | PHÒNG ĐĂNG KÝ KINH DOANH"
+ *  -> "Phòng Đăng ký kinh doanh Sở Kế hoạch và Đầu tư Thành phố Hồ Chí Minh" (theo bộ Lemar – ỦY QUYỀN - NỘP (1).docx).
+ */
+export const coQuanCapGcn = (raw: string): string => {
+  const s = (raw || '').normalize('NFC').trim();
+  if (!s) return '';
+  const parts = s.split(/\s*[|\n]\s*|\s+-\s+/).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const phongRaw = parts.find((x) => /^phòng/i.test(x)) || '';
+  const soRaw = parts.find((x) => /^sở/i.test(x)) || parts.find((x) => !/^phòng/i.test(x)) || '';
+  const phong = phongRaw
+    ? phongRaw.toLowerCase().replace(/^phòng\s+(\S)/, (_m, a) => 'Phòng ' + a.toUpperCase())
+    : 'Phòng Đăng ký kinh doanh';
+  const m = soRaw.match(/^(sở\s+(?:kế hoạch và đầu tư|tài chính))\s*(.*)$/i);
+  let so = soRaw;
+  if (m) {
+    const ten = /kế hoạch/i.test(m[1]) ? 'Sở Kế hoạch và Đầu tư' : 'Sở Tài chính';
+    so = `${ten}${m[2] ? ' ' + VIET_HOA_DIA_DANH(m[2]) : ''}`;
+  }
+  return `${phong} ${so}`.trim();
+};
+/** Không đọc được cơ quan cấp: GCN cấp trước 01/03/2025 (trước khi Sở Kế hoạch và Đầu tư nhập vào Sở Tài chính) thì ghi Sở Kế hoạch và Đầu tư. */
+const coQuanTheoNgay = (ngay: string, cqHienTai: string) => {
+  const t = tachNgay(ngay);
+  if (!t || !cqHienTai) return cqHienTai;
+  return toDate(t) < new Date(2025, 2, 1) ? cqHienTai.replace(/Sở Tài chính/i, 'Sở Kế hoạch và Đầu tư') : cqHienTai;
+};
 
 /* ---------- Tạm ngừng kinh doanh ---------- */
 const DATE_RE = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/;
@@ -206,7 +240,7 @@ const MAX_NGANH = 30;
  */
 export const buildChangeRow = (
   currentGoc: Record<string, string>,
-  gpkd: { enterpriseCode?: string; firstRegDate?: string; changeCount?: string; lastChangeDate?: string },
+  gpkd: { enterpriseCode?: string; firstRegDate?: string; changeCount?: string; lastChangeDate?: string; gcnIssuer?: string },
   c: ChangeData
 ): { headers: string[]; values: string[] } => {
   // Số điện thoại nhập thêm ghi đè số trên GPKD: Giám đốc (người đại diện; chủ sở hữu nếu là cùng người) và công ty
@@ -235,8 +269,24 @@ export const buildChangeRow = (
   add('LAN_THAY_DOI_MOI', gpkd.changeCount ? String(Number(gpkd.changeCount) + 1) : '1');
   // Quyết định của chủ sở hữu + Giấy ủy quyền công ty
   add('QD_SO', '01/QĐ');
+  // Quyết định – Điều 1 (theo bộ Lemar, Toàn Gia Phú – QĐ.docx): từ 2 nội dung trở lên thì đánh số "1. ", "2. "…
+  // theo thứ tự đổi tên → địa chỉ → vốn → ngành → đại diện; chỉ 1 nội dung thì không đánh số.
+  // Trong khối ngành: Bổ sung / Bỏ chỉ đánh số khi ngành là nội dung duy nhất và có cả hai mục.
+  {
+    const thuTu: [ChangeCaseId, string][] = [['doiTen', 'DOI_TEN'], ['diaChi', 'DIA_CHI'], ['von', 'VON'], ['nganh', 'NGANH'], ['daiDien', 'DAI_DIEN']];
+    const chon = thuTu.filter(([id]) => c.cases[id]);
+    thuTu.forEach(([, k]) => {
+      const i = chon.findIndex(([, x]) => x === k);
+      add(`QD_STT_${k}`, chon.length > 1 && i >= 0 ? `${i + 1}. ` : '');
+    });
+    const coBs = c.addIndustries.some((x) => x.code), coBo = c.removeIndustries.some((x) => x.code);
+    const soCon = chon.length === 1 && c.cases.nganh && coBs && coBo;
+    add('QD_STT_BO_SUNG', soCon ? '1. ' : '');
+    add('QD_STT_BO', soCon ? '2. ' : '');
+  }
   add('GCN_SO', (c.gcnNumber || '').trim() || gpkd.enterpriseCode || '');
   add('GCN_NGAY_CAP', (c.gcnDate || '').trim() || gpkd.firstRegDate || '');
+  add('GCN_CO_QUAN', (c.gcnCoQuan || '').trim() || gpkd.gcnIssuer || coQuanTheoNgay((c.gcnDate || '').trim() || gpkd.firstRegDate || '', current.CQ_DK_KD || ''));
   // Tạm ngừng kinh doanh: số thông báo 01/<ký hiệu>-TB, nơi ký ghi đủ ("Thành phố Hồ Chí Minh", "Tỉnh Tây Ninh")
   const tinhTs = tinhMoi(tpTruSo);
   add('NOI_KY_DD', tinhTs ? (/^Thành phố\s/.test(tinhTs) ? tinhTs : `Tỉnh ${tinhTs}`) : tpTruSo);
@@ -360,19 +410,22 @@ export const buildChangeRow = (
   add('THUE_MOI_SDT', thueA ? c.newPhone || sdtCty : thueB ? sdtCty : '');
   // Email nhận thông báo thuế: ô nhập riêng > email trụ sở mới (đổi địa chỉ) > email công ty
   add('THUE_MOI_EMAIL', thueA || thueB ? (c.thueEmail || '').trim() || (thueA ? c.newEmail : '') || current.EMAIL || '' : '');
-  // Thuế – chỉ tiêu 1 (Giám đốc/Tổng giám đốc):
-  //  - đổi người đại diện: điền người đại diện mới;
-  //  - Mục B có cập nhật địa chỉ liên hệ của người đại diện hiện tại là Giám đốc/Tổng giám đốc: điền người đó (theo GPKD).
+  // Thuế – chỉ tiêu 1 (Giám đốc/Tổng giám đốc): có phần thông tin đăng ký thuế thì luôn điền Giám đốc
+  //  (theo bộ Lemar, Toàn Gia Phú – mau-so-12-truong-hop1.docx):
+  //  - đổi người đại diện: người đại diện mới;
+  //  - còn lại: người đại diện hiện tại theo GPKD (Giám đốc = người đại diện theo pháp luật).
   const norm = (x: string) => (x || '').normalize('NFC').trim().toUpperCase().replace(/\s+/g, ' ');
   const laGiamDoc = (t: string) => !t.trim() || /giám đốc/i.test(t);
   const gdMoi = on.daiDien && laGiamDoc(c.newRep.title) ? c.newRep : null;
   const gdCapNhat = !gdMoi && cnLh.some((x) => norm(x.name) && norm(x.name) === norm(current.DAI_DIEN_TEN)) && laGiamDoc(current.DAI_DIEN_CHUC_DANH || '');
-  add('GD_TEN', gdMoi ? gdMoi.name.toUpperCase() : gdCapNhat ? current.DAI_DIEN_TEN : '');
-  add('GD_SINH_NGAY', gdMoi ? gdMoi.dob : gdCapNhat ? current.DAI_DIEN_SINH_NGAY : '');
-  add('GD_GIOI_TINH', gdMoi ? gdMoi.gender : gdCapNhat ? current.DAI_DIEN_GIOI_TINH : '');
-  add('GD_SO_GT', gdMoi ? gdMoi.idNumber : gdCapNhat ? current.DAI_DIEN_SO_GT : '');
-  add('GD_SDT', gdMoi ? gdMoi.phone : gdCapNhat ? current.DAI_DIEN_SDT : '');
-  add('TD_THUE', on.daiDien || thueA || thueB || gdCapNhat ? 'X' : '');
+  const tdThue = on.daiDien || thueA || thueB || gdCapNhat;
+  const gdHienTai = !gdMoi && tdThue && !!current.DAI_DIEN_TEN && laGiamDoc(current.DAI_DIEN_CHUC_DANH || '');
+  add('GD_TEN', gdMoi ? gdMoi.name.toUpperCase() : gdHienTai ? current.DAI_DIEN_TEN : '');
+  add('GD_SINH_NGAY', gdMoi ? gdMoi.dob : gdHienTai ? current.DAI_DIEN_SINH_NGAY : '');
+  add('GD_GIOI_TINH', gdMoi ? gdMoi.gender : gdHienTai ? current.DAI_DIEN_GIOI_TINH : '');
+  add('GD_SO_GT', gdMoi ? gdMoi.idNumber : gdHienTai ? current.DAI_DIEN_SO_GT : '');
+  add('GD_SDT', gdMoi ? gdMoi.phone : gdHienTai ? current.DAI_DIEN_SDT || sdtCty || current.DT_CTY || '' : '');
+  add('TD_THUE', tdThue ? 'X' : '');
 
   // Thông báo thay đổi thông tin về chủ sở hữu hưởng lợi (Mẫu 12):
   //  - chọn mục 8: chỉ in đoạn a) hoặc b) đã chọn;

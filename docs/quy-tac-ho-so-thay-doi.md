@@ -61,3 +61,14 @@ Thứ tự file: Mẫu 12 → Mẫu 13 (nếu có) → Quyết định → Giấ
 - **Chữ ký**: 5 dòng trống giữa "(Ký và ghi họ tên)" và họ tên; khối chữ ký luôn đi liền 2 đoạn chữ cuối phía trên (keepNext), không để dòng trống thừa đẩy chữ ký sang trang trắng.
 - **Giấy đề nghị / Quyết định**: lề trang trên 993, phải 992, dưới 851, trái 1134 (twip); bảng ngành: cột Tên ngành rộng (Mẫu 12/QĐ: 810/5000/1276/2600; bỏ ngành 810/4700/1276/2900; Mẫu 02: 810/5600/1276/2000).
 - Mỗi lần sửa mẫu: điền thử bằng bộ hồ sơ thật, so số trang và xem ảnh các trang, gửi anh duyệt rồi mới chép code.
+
+## Chốt ngày 06/11/2026 (đối chiếu bộ Lemar, Toàn Gia Phú, TNM Solutions)
+- **Mẫu 12 – phần thông tin đăng ký thuế**: có phần này thì luôn điền Giám đốc (họ tên, ngày sinh, giới tính, số định danh, SĐT) = người đại diện hiện tại; đổi người đại diện thì theo người mới. (Lemar, Toàn Gia Phú – mau-so-12-truong-hop1.docx, chỉ tiêu 1.) Số lao động để dấu chấm, người làm hồ sơ tự điền.
+- **Quyết định – Điều 1**: mỗi loại thay đổi một khối, chỉ giữ khối đang chọn.
+  - Đổi địa chỉ: "Thay đổi địa chỉ trụ sở chính công ty từ địa chỉ … sang địa chỉ …" (Lemar – QĐ.docx).
+  - Đổi ngành: "Thay đổi ngành nghề kinh doanh của công ty như sau:" rồi Bổ sung / Bỏ (khối nào trống thì bỏ).
+  - Từ 2 nội dung trở lên đánh số 1., 2. theo thứ tự tên → địa chỉ → vốn → ngành → đại diện (Toàn Gia Phú – QĐ.docx); 1 nội dung thì không đánh số. Bổ sung/Bỏ chỉ đánh số khi ngành là nội dung duy nhất và có cả hai.
+- **Giấy ủy quyền – cơ quan cấp GCN**: AI đọc góc trên bên trái GCN (trường `issuer`), chuẩn hóa thành "Phòng Đăng ký kinh doanh Sở … <tỉnh/thành>"; có ô "Cơ quan cấp GCN" để sửa; không đọc được thì GCN cấp trước 01/03/2025 ghi Sở Kế hoạch và Đầu tư (Lemar – ỦY QUYỀN - NỘP (1).docx).
+- Giữ theo web: ký hiệu số giấy, ", Việt Nam" có hoặc không đều được; Nghị định **296**/2026/NĐ-CP (file mẫu cũ ghi 269 là sai).
+- **Trang chữ ký**: mọi giấy, chữ ký nằm ở trang riêng kèm vài dòng chữ cuối (ngắt trang trước các đoạn đó: Mẫu 02 từ "Tôi cam kết:", Mẫu 12 từ "Trường hợp hồ sơ… hợp lệ", Quyết định từ Điều 3, Ủy quyền từ "Giấy ủy quyền này được lập…", Điều lệ từ "Bản điều lệ này gồm…").
+- Bộ Hoàng Hà (công ty cổ phần) bỏ qua; web chỉ làm TNHH 1TV.

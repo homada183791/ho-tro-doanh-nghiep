@@ -5,7 +5,7 @@ import { aiErrorMessage } from '../services/aiClient';
 import { filesThanhAnh } from '../services/pdfAnh';
 import { findVsic, normalizeCode } from '../services/vsic';
 import { tienBangChu, parseTien, dinhDangTien } from '../services/soThanhChu';
-import { CHANGE_CASES, denNgayMacDinh, ghiChuNganhBo, type ChangeData, type ChangeCaseId, type PersonInfo, type CapNhatNguoi } from '../services/changeData';
+import { CHANGE_CASES, coQuanCapGcn, denNgayMacDinh, ghiChuNganhBo, type ChangeData, type ChangeCaseId, type PersonInfo, type CapNhatNguoi } from '../services/changeData';
 import { FileText, Loader2, ScanLine, Upload, ListChecks, Search, Plus, X, Star, Languages, MapPin, PenLine, Sparkles, ChevronDown, Check } from 'lucide-react';
 
 const inputCls = 'w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white';
@@ -233,6 +233,7 @@ const applyGpkd = (prev: BusinessInfo, g: GpkdInfo): BusinessInfo => {
   const next: any = { ...prev };
   const set = (k: keyof BusinessInfo, v: string) => { if (v) next[k] = v; };
   set('enterpriseCode', g.enterpriseCode); set('firstRegDate', g.firstRegDate);
+  set('gcnIssuer', coQuanCapGcn(g.issuer || ''));
   set('changeCount', g.changeCount); set('lastChangeDate', g.lastChangeDate);
   set('name', g.name.toUpperCase()); set('nameEn', g.nameEn); set('nameAbbr', g.nameAbbr);
   set('addressDetail', g.addressDetail); set('addressWard', g.addressWard); set('addressCity', g.addressCity);
@@ -887,7 +888,9 @@ export const ChangeCases: React.FC<{
         <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <Field label="Số Giấy chứng nhận ĐKDN" value={change.gcnNumber} onChange={(v) => upd('gcnNumber', v)} placeholder="Để trống = mã số doanh nghiệp" />
           <Field label="Ngày cấp GCN ĐKDN" value={change.gcnDate} onChange={(v) => upd('gcnDate', v)} placeholder="dd/mm/yyyy (trống = ngày ĐK lần đầu)" />
-          <p className="text-xs text-slate-500">Dùng cho Giấy ủy quyền nộp hồ sơ (phần giới thiệu công ty ủy quyền).</p>
+          <Field label="Cơ quan cấp GCN" value={change.gcnCoQuan || ''} onChange={(v) => upd('gcnCoQuan', v)}
+            placeholder={info.gcnIssuer ? `Theo GPKD: ${info.gcnIssuer}` : 'Trống = đọc từ GPKD (góc trên bên trái)'} />
+          <p className="text-xs text-slate-500 md:col-span-3">Dùng cho Giấy ủy quyền nộp hồ sơ (phần giới thiệu công ty ủy quyền). Cơ quan cấp lấy ở góc trên bên trái GCN: giấy cấp trước 03/2025 là Sở Kế hoạch và Đầu tư, sau đó là Sở Tài chính.</p>
         </div>
       )}
 

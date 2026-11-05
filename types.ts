@@ -102,6 +102,7 @@ export interface BusinessInfo {
   repAddressCountry: string;
 
   ownerGender?: string;
+  gcnIssuer?: string;  // Cơ quan cấp GCN ĐKDN (góc trên bên trái của giấy, AI rút trích)
   gdPhone?: string;     // SĐT Giám đốc (mục 10.1 Giấy đề nghị); trống = SĐT người đại diện
   soLaoDong?: string;   // Tổng số lao động dự kiến (mục 10.7); trống = 01
   repGender?: string;
