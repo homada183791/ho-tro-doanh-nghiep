@@ -422,6 +422,42 @@ export const MAU_DOI_DAI_DIEN: MauHoSo = {
   file: '/mau/Mau13_DoiDaiDien_MailMerge.docx', ten: 'GiayDeNghi_DoiDaiDien', nhan: 'Giấy đề nghị thay đổi người đại diện theo pháp luật (Mẫu số 13)',
 };
 
+/** Điều lệ theo mẫu riêng của Phòng ĐKKD Thành phố Đồng Nai (chủ sở hữu là cá nhân). */
+export const MAU_DIEU_LE_DONG_NAI: MauHoSo = { file: '/mau/Mau_DieuLe_DongNai_MailMerge.docx', ten: 'DieuLe', nhan: 'Điều lệ công ty (mẫu Đồng Nai)' };
+
+/** Thông báo tạm ngừng kinh doanh (doanh nghiệp) – Công ty TNHH 1 thành viên. */
+export const MAU_TAM_NGUNG: MauHoSo = { file: '/mau/Mau_TamNgung_ThongBao_MailMerge.docx', ten: 'ThongBao_TamNgung', nhan: 'Thông báo tạm ngừng kinh doanh' };
+
+/** Quyết định của chủ sở hữu về việc tạm ngừng kinh doanh. */
+export const MAU_TAM_NGUNG_QD: MauHoSo = { file: '/mau/Mau_TamNgung_QuyetDinh_MailMerge.docx', ten: 'QuyetDinh', nhan: 'Quyết định tạm ngừng kinh doanh của chủ sở hữu' };
+
+/** Hồ sơ nộp tại Phòng ĐKKD Đồng Nai (theo cơ quan đăng ký). */
+export const laDongNai = (coQuan?: string) => /đồng nai/i.test((coQuan || '').normalize('NFC'));
+
+/** Bộ hồ sơ thành lập mới TNHH 1TV: Đồng Nai + chủ sở hữu cá nhân thì dùng Điều lệ mẫu Đồng Nai. */
+export const mauThanhLapTNHH1TV = (info: { registrationOffice?: string; ownerType?: string }): MauHoSo[] =>
+  MAU_TNHH_1TV.map((m) => (m.ten === 'DieuLe' && laDongNai(info.registrationOffice) && info.ownerType !== 'organization' ? MAU_DIEU_LE_DONG_NAI : m));
+
+/**
+ * Bộ hồ sơ thay đổi TNHH 1TV theo trường hợp đã chọn:
+ *  - Tạm ngừng kinh doanh (làm riêng): Thông báo + Quyết định + Giấy ủy quyền (kiểu công ty).
+ *  - Còn lại: Mẫu 12 (luôn có) → Mẫu 13 (đổi đại diện) → Quyết định (đổi tên/địa chỉ/vốn/ngành/đại diện)
+ *    → Giấy ủy quyền (kiểu công ty) → Danh sách CSH hưởng lợi (đổi chủ sở hữu / CSH hưởng lợi).
+ */
+export const mauThayDoiTNHH1TV = (cs: Record<string, boolean>): MauHoSo[] => {
+  if (cs.tamNgung) return [MAU_TAM_NGUNG, MAU_TAM_NGUNG_QD, MAU_UY_QUYEN_THAY_DOI];
+  const coThayDoi = Object.values(cs).some(Boolean);
+  const canCSH = cs.chuSoHuu || cs.chuHuongLoi;
+  const canQD = cs.doiTen || cs.diaChi || cs.von || cs.nganh || cs.daiDien;
+  return [
+    ...(coThayDoi ? MAU_THAY_DOI_TNHH_1TV : []),
+    ...(cs.daiDien ? [MAU_DOI_DAI_DIEN] : []),
+    ...(canQD ? [MAU_QUYET_DINH] : []),
+    MAU_UY_QUYEN_THAY_DOI,
+    ...(canCSH ? [MAU_CSH_HUONG_LOI] : []),
+  ];
+};
+
 export const safeName = (s: string) =>
   (s || '').replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90) || 'KhongTen';
 

@@ -5,7 +5,7 @@ import { aiErrorMessage } from '../services/aiClient';
 import { filesThanhAnh } from '../services/pdfAnh';
 import { findVsic, normalizeCode } from '../services/vsic';
 import { tienBangChu, parseTien, dinhDangTien } from '../services/soThanhChu';
-import { CHANGE_CASES, type ChangeData, type ChangeCaseId, type PersonInfo, type CapNhatNguoi } from '../services/changeData';
+import { CHANGE_CASES, denNgayMacDinh, ghiChuNganhBo, type ChangeData, type ChangeCaseId, type PersonInfo, type CapNhatNguoi } from '../services/changeData';
 import { FileText, Loader2, ScanLine, Upload, ListChecks, Search, Plus, X, Star, Languages, MapPin, PenLine, Sparkles, ChevronDown, Check } from 'lucide-react';
 
 const inputCls = 'w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white';
@@ -377,7 +377,11 @@ export const ChangeCases: React.FC<{
     if (id === 'capNhat' && !change.cases.capNhat) setAutoTra((n) => n + 1);
     setChange((c) => {
     const on = !c.cases[id];
-    const next = { ...c, cases: { ...c.cases, [id]: on } };
+    // Tạm ngừng kinh doanh làm hồ sơ riêng: chọn tạm ngừng thì bỏ các trường hợp khác và ngược lại
+    const cases = id === 'tamNgung' && on
+      ? (Object.fromEntries(Object.keys(c.cases).map((k) => [k, false])) as ChangeData['cases'])
+      : { ...c.cases, tamNgung: false };
+    const next = { ...c, cases: { ...cases, [id]: on } };
     if (id === 'capNhat' && on) {
       Object.assign(next, napTuGpkd(c));
     }
@@ -522,7 +526,7 @@ export const ChangeCases: React.FC<{
       <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-1">
         <ListChecks className="w-5 h-5 text-blue-600" /> Nội dung đăng ký thay đổi
       </h3>
-      <p className="text-sm text-slate-500 mb-4">Chọn một hoặc nhiều trường hợp. Mỗi trường hợp sẽ mở phần rút trích và các ô thông tin mới.</p>
+      <p className="text-sm text-slate-500 mb-4">Chọn một hoặc nhiều trường hợp. Mỗi trường hợp sẽ mở phần rút trích và các ô thông tin mới. Tạm ngừng kinh doanh làm hồ sơ riêng (không chọn cùng trường hợp khác).</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {CHANGE_CASES.map((cs, i) => (
@@ -653,15 +657,22 @@ export const ChangeCases: React.FC<{
                 {change.removeIndustries.map((x) => (
                   <li key={x.code} className="flex items-start gap-2 p-2 text-sm">
                     <span className="font-mono font-semibold text-red-700 w-12 shrink-0">{x.code}</span>
-                    <input className="flex-1 text-slate-700 bg-transparent outline-none border-b border-transparent focus:border-slate-300" value={x.name}
-                      placeholder="Nhập tên ngành như trên GPKD" aria-label={`Tên ngành ${x.code}`}
-                      onChange={(e) => upd('removeIndustries', change.removeIndustries.map((y) => y.code === x.code ? { ...y, name: e.target.value } : y))} />
+                    <div className="flex-1 min-w-0">
+                      <input className="w-full text-slate-700 bg-transparent outline-none border-b border-transparent focus:border-slate-300" value={x.name}
+                        placeholder="Nhập tên ngành như trên GPKD" aria-label={`Tên ngành ${x.code}`}
+                        onChange={(e) => upd('removeIndustries', change.removeIndustries.map((y) => y.code === x.code ? { ...y, name: e.target.value } : y))} />
+                      {change.rutGhiChu36 !== false && <p className="text-xs text-slate-500 mt-0.5">Ghi chú: {ghiChuNganhBo(x.code)}</p>}
+                    </div>
                     <button type="button" aria-label={`Bỏ ${x.code}`} onClick={() => upd('removeIndustries', change.removeIndustries.filter((y) => y.code !== x.code))}
                       className="p-1 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
                   </li>
                 ))}
               </ul>
             )}
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={change.rutGhiChu36 !== false} onChange={(e) => upd('rutGhiChu36', e.target.checked)} />
+              Ghi chú theo Quyết định số 36/2025/QĐ-TTg (mã còn trong VSIC 2025: "bị thay đổi"; không còn: "bị xóa")
+            </label>
           </div>
         </div>
       )}
@@ -800,6 +811,21 @@ export const ChangeCases: React.FC<{
         </div>
       )}
 
+      {change.cases.tamNgung && (
+        <div className={box}>
+          <h4 className="text-sm font-semibold text-slate-800">9. Tạm ngừng kinh doanh (doanh nghiệp)</h4>
+          <p className="text-xs text-slate-500">Bộ hồ sơ: Thông báo tạm ngừng kinh doanh + Quyết định của chủ sở hữu + Giấy ủy quyền. Gửi chậm nhất 03 ngày làm việc trước ngày bắt đầu tạm ngừng; mỗi lần không quá 01 năm.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="Tạm ngừng kể từ ngày" value={change.tnTuNgay} onChange={(v) => upd('tnTuNgay', v)} placeholder="dd/mm/yyyy" />
+            <Field label="Đến hết ngày" value={change.tnDenNgay} onChange={(v) => upd('tnDenNgay', v)}
+              placeholder={denNgayMacDinh(change.tnTuNgay) ? `Tự động: ${denNgayMacDinh(change.tnTuNgay)}` : 'dd/mm/yyyy (trống = 1 năm)'} />
+            <Field label="Lý do tạm ngừng" value={change.tnLyDo} onChange={(v) => upd('tnLyDo', v)} placeholder="Kinh doanh không hiệu quả" />
+            <Field label={`SĐT người đại diện${info.ownerName ? ` (${info.ownerName.toUpperCase()})` : ''}`} value={change.tnSdt} onChange={(v) => upd('tnSdt', v)} placeholder={info.repPhone || 'Số điện thoại'} />
+            <Field label="Email người đại diện" value={change.tnEmail} onChange={(v) => upd('tnEmail', v)} placeholder="Để trống = dấu chấm" />
+          </div>
+        </div>
+      )}
+
       {change.cases.chuHuongLoi && (
         <div className="mt-4 p-4 rounded-xl border border-blue-200 bg-blue-50/30 space-y-3">
           <h4 className="text-sm font-semibold text-slate-800">8. Thông báo thay đổi thông tin về chủ sở hữu hưởng lợi của doanh nghiệp</h4>
@@ -818,7 +844,7 @@ export const ChangeCases: React.FC<{
         </div>
       )}
 
-      {Object.values(change.cases).some(Boolean) && (() => {
+      {Object.values(change.cases).some(Boolean) && !change.cases.tamNgung && (() => {
         const coChuCaNhan = info.ownerType !== 'organization' && !!(info.companyOwner || '').trim();
         const nguon = change.hlNguon || (change.cases.chuSoHuu ? (change.newOwnerType === 'individual' ? 'chu' : 'khac') : coChuCaNhan ? 'chu' : 'khac');
         const tenChu = change.cases.chuSoHuu ? (change.newOwnerType === 'individual' ? change.newOwner.name : '') : coChuCaNhan ? info.companyOwner : '';
@@ -847,12 +873,13 @@ export const ChangeCases: React.FC<{
         );
       })()}
 
-      {Object.values(change.cases).some(Boolean) && (
+      {Object.values(change.cases).some(Boolean) && !change.cases.tamNgung && (
         <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <Field label={`SĐT Chủ tịch công ty / Giám đốc${info.ownerName ? ` (${info.ownerName.toUpperCase()})` : ''}`} value={change.sdtGiamDoc}
             onChange={(v) => upd('sdtGiamDoc', v)} placeholder={info.repPhone || 'Số điện thoại'} />
           <Field label="SĐT công ty" value={change.sdtCongTy} onChange={(v) => upd('sdtCongTy', v)} placeholder={info.phone || 'Số điện thoại'} />
-          <p className="text-xs text-slate-500">Ghi vào mục thông tin đăng ký thuế (Giám đốc, địa chỉ nhận thông báo thuế) và điện thoại trụ sở. Đổi người đại diện thì dùng SĐT của người mới.</p>
+          <Field label="Email nhận thông báo thuế" value={change.thueEmail || ''} onChange={(v) => upd('thueEmail', v)} placeholder={info.email ? `Tự động: ${info.email}` : 'email@...'} />
+          <p className="text-xs text-slate-500 md:col-span-3">Ghi vào mục thông tin đăng ký thuế (Giám đốc, địa chỉ nhận thông báo thuế) và điện thoại trụ sở. Đổi người đại diện thì dùng SĐT của người mới.</p>
         </div>
       )}
 
@@ -867,7 +894,7 @@ export const ChangeCases: React.FC<{
       {Object.values(change.cases).some(Boolean) && (
         <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <label className="block md:col-span-2">
-            <span className={`${labelCls} flex items-center gap-1`}><PenLine className="w-3 h-3" /> Người ký giấy đề nghị</span>
+            <span className={`${labelCls} flex items-center gap-1`}><PenLine className="w-3 h-3" /> {change.cases.tamNgung ? 'Người ký thông báo (người đại diện theo pháp luật)' : 'Người ký giấy đề nghị'}</span>
             <input className={`${inputCls} uppercase`} value={change.signer} onChange={(e) => upd('signer', e.target.value.toUpperCase())}
               placeholder={autoSigner ? `Tự động: ${autoSigner}` : 'Họ tên người ký'} />
           </label>

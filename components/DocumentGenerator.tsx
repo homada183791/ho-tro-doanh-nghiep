@@ -53,8 +53,9 @@ import { HoKinhDoanhForm } from './HoKinhDoanhForm';
 import { SauThanhLapForm } from './SauThanhLapForm';
 import { tinhMoi, coQuanDangKy } from '../services/tinhThanh';
 import { filesThanhAnh } from '../services/pdfAnh';
-import { emptyChange, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
-import { tronBoHoSo, MAU_TNHH_1TV, MAU_THAY_DOI_TNHH_1TV, MAU_DOI_DAI_DIEN, MAU_UY_QUYEN_THAY_DOI, MAU_QUYET_DINH, MAU_CSH_HUONG_LOI, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
+import { buildThanhLapRow } from '../services/thanhLapData';
+import { emptyChange, denNgayTamNgung, buildChangeRow, buildChangeWordRecord, kiemTraThayDoi, CHANGE_CASES, type ChangeData } from '../services/changeData';
+import { tronBoHoSo, mauThanhLapTNHH1TV, mauThayDoiTNHH1TV, zipFiles, downloadBytes, safeName, khongDau, DOCX_MIME, type FileHoSo, type MergeRecord } from '../services/tronHoSo';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -110,7 +111,7 @@ const REGISTRATION_OFFICES = [
   "Phòng Quản lý Doanh nghiệp – Đăng ký Kinh doanh Sở Tài chính Tỉnh Cao Bằng",
   "Phòng Quản lý Doanh nghiệp Sở Tài chính Tỉnh Đắk Lắk",
   "Phòng Đăng ký Kinh doanh Sở Tài chính Tỉnh Điện Biên",
-  "Phòng Đăng ký Kinh doanh Sở Tài chính Tỉnh Đồng Nai",
+  "Phòng Đăng ký Kinh doanh Sở Tài chính Thành phố Đồng Nai",
   "Phòng Đăng ký Kinh doanh Sở Tài chính Tỉnh Đồng Tháp",
   "Phòng Doanh nghiệp và Kinh tế Tập thể Sở Tài chính Tỉnh Gia Lai",
   "Phòng Đăng ký Kinh doanh Sở Tài chính Tỉnh Hà Tĩnh",
@@ -984,235 +985,7 @@ const DocumentGenerator: React.FC = () => {
   };
 
   /** Dựng một dòng dữ liệu trộn thư (133 cột theo mẫu MailMerge_Data_30nganh.xlsx). Dùng chung cho Excel và Word. */
-  const buildMailMerge = () => {
-        const getIdDocumentType = (idNumber?: string, extractedType?: string, isOrg?: boolean) => {
-            if (!idNumber) return "";
-            if (isOrg) return "";
-            
-            // If AI successfully extracted the specific type, use it
-            if (extractedType && (
-                extractedType === "Căn cước công dân" || 
-                extractedType === "Căn cước" || 
-                extractedType === "Hộ chiếu Việt Nam" || 
-                extractedType === "Hộ chiếu nước ngoài"
-            )) {
-                return extractedType;
-            }
-
-            // Fallback logic based on ID number format
-            const cleaned = idNumber.trim().toUpperCase();
-            if (/^[A-Z]\d{7}$/.test(cleaned)) {
-                return "Hộ chiếu Việt Nam";
-            }
-            if (/[A-Z]/.test(cleaned)) {
-                return "Hộ chiếu nước ngoài";
-            }
-            
-            // If it's 12 digits, we can try to guess based on issue date if available, 
-            // but without date, we default to CCCD as it's most common for 12 digits.
-            // 9 digits is CMND.
-            if (cleaned.length === 12) {
-                // We can't definitively tell CCCD vs CC just from the 12-digit number without the issue date.
-                // However, the prompt specifically asks for "Căn cước công dân" or "Căn cước".
-                // If the AI didn't catch it, we default to "Căn cước công dân" as it's the majority currently.
-                return "Căn cước công dân";
-            }
-            
-            if (cleaned.length === 9) {
-                return "Chứng minh nhân dân";
-            }
-
-            return "Căn cước công dân"; // Default fallback instead of combined string
-        };
-
-        // 1. Prepare Data for Mail Merge (Horizontal Format)
-        
-        // Process Date
-        let dateFull = "";
-        let day = "", month = "", year = "";
-        if (info.docDate) {
-             const parts = info.docDate.split('-');
-             if (parts.length === 3) {
-                 day = parts[2];
-                 month = parts[1];
-                 year = parts[0];
-                 dateFull = `ngày ${day} tháng ${month} năm ${year}`;
-             }
-        }
-
-        // Process Owner Info based on Type
-        let chuTen = info.companyOwner;
-        let chuSoGT = info.ownerIdNumber;
-        let chuNgayCap = info.ownerIdDate;
-        let chuNoiCap = info.ownerIdPlace;
-        let chuDiaChi = info.ownerAddressDetail;
-        let chuPhuong = info.ownerAddressWard;
-        let chuTinh = info.ownerAddressCity;
-        let chuGioiTinh = info.ownerGender || "";
-        let chuSinhNgay = info.ownerDob || "";
-        let chuSDT = info.ownerPhone || "";
-        let chuLoaiGT = getIdDocumentType(info.ownerIdNumber, info.ownerIdDocumentType, false);
-
-        // Prepare Authorized Representative Data (UQ_*)
-        let uqTen = "", uqSoGT = "", uqNgayCap = "", uqNoiCap = "";
-        let uqDiaChi = "", uqPhuong = "", uqTinh = "", uqQuocGia = "";
-        let uqSinhNgay = "", uqSDT = "", uqGioiTinh = "", uqLoaiGT = "";
-
-        // Prepare Beneficial Owner Data (CSH_HL_*)
-        let cshHlTen = "", cshHlSoGT = "", cshHlNgayCap = "", cshHlNoiCap = "";
-        let cshHlDiaChi = "", cshHlPhuong = "", cshHlTinh = "", cshHlQuocGia = "";
-        let cshHlSinhNgay = "", cshHlGioiTinh = "", cshHlLoaiGT = "";
-
-        if (info.ownerType === 'organization') {
-            // If organization, CHU_* fields contain Org info
-            chuTen = info.ownerOrgName;
-            chuSoGT = info.ownerOrgCode;
-            chuNgayCap = info.ownerOrgIssueDate;
-            chuNoiCap = info.ownerOrgIssuePlace;
-            chuDiaChi = info.ownerOrgAddressDetail;
-            chuPhuong = info.ownerOrgAddressWard;
-            chuTinh = info.ownerOrgAddressCity;
-            chuGioiTinh = "";
-            chuSinhNgay = "";
-            chuSDT = "";
-            chuLoaiGT = "";
-
-            // And UQ_* fields contain Auth Rep info (from the person fields)
-            uqTen = info.companyOwner;
-            uqSoGT = info.ownerIdNumber;
-            uqNgayCap = info.ownerIdDate;
-            uqNoiCap = info.ownerIdPlace;
-            uqDiaChi = info.ownerAddressDetail;
-            uqPhuong = info.ownerAddressWard;
-            uqTinh = info.ownerAddressCity;
-            uqQuocGia = info.ownerAddressCountry;
-            uqSinhNgay = info.ownerDob;
-            uqSDT = info.ownerPhone;
-            uqGioiTinh = info.ownerGender || "";
-            uqLoaiGT = getIdDocumentType(info.ownerIdNumber, info.ownerIdDocumentType, false);
-
-            // And CSH_HL_* fields contain Beneficial Owner info
-            cshHlTen = info.beneficialOwnerName || "";
-            cshHlSoGT = info.beneficialOwnerIdNumber || "";
-            cshHlNgayCap = info.beneficialOwnerIdDate || "";
-            cshHlNoiCap = info.beneficialOwnerIdPlace || "";
-            cshHlDiaChi = info.beneficialOwnerAddressDetail || "";
-            cshHlPhuong = info.beneficialOwnerAddressWard || "";
-            cshHlTinh = info.beneficialOwnerAddressCity || "";
-            cshHlQuocGia = info.beneficialOwnerAddressCountry || "";
-            cshHlSinhNgay = info.beneficialOwnerDob || "";
-            cshHlGioiTinh = info.beneficialOwnerGender || "";
-            cshHlLoaiGT = getIdDocumentType(info.beneficialOwnerIdNumber, info.beneficialOwnerIdDocumentType, false);
-        }
-
-        // Chủ sở hữu là cá nhân: chủ sở hữu hưởng lợi chính là người đó (sở hữu 100% vốn điều lệ)
-        if (info.ownerType !== 'organization') {
-            cshHlTen = chuTen || "";
-            cshHlGioiTinh = chuGioiTinh;
-            cshHlSinhNgay = chuSinhNgay;
-            cshHlLoaiGT = chuLoaiGT;
-            cshHlSoGT = chuSoGT || "";
-            cshHlNgayCap = chuNgayCap || "";
-            cshHlNoiCap = chuNoiCap || "";
-            cshHlDiaChi = chuDiaChi || "";
-            cshHlPhuong = chuPhuong || "";
-            cshHlTinh = chuTinh || "";
-            cshHlQuocGia = info.ownerAddressCountry || "Việt Nam";
-        }
-
-        // Ngành nghề: luôn đủ 30 cặp cột TEN_NGANH_n / MA_NGANH_n như file mẫu MailMerge_Data_30nganh.xlsx
-        const MAX_NGANH = 30;
-        const industryList: { name: string; code: string }[] =
-            info.industryCodes && info.industryCodes.length > 0
-                ? info.industryCodes.map(c => ({ name: c.name, code: c.code }))
-                : [
-                    ...(info.industry ? [{ name: info.industry, code: "" }] : []),
-                    ...(info.subIndustries ? [{ name: info.subIndustries, code: "" }] : []),
-                  ];
-        const industryHeaders: string[] = [];
-        const industryValues: string[] = [];
-        for (let i = 0; i < MAX_NGANH; i++) {
-            industryHeaders.push(`TEN_NGANH_${i + 1}`, `MA_NGANH_${i + 1}`);
-            industryValues.push(industryList[i]?.name || "", industryList[i]?.code || "");
-        }
-        // Mã ngành chính (cột NGANH_CHINH)
-        const nganhChinh = info.industryCodes?.find(c => c.isMain)?.code || "";
-        // Quá 30 ngành: thêm cột ở cuối bảng để không làm lệch vị trí các cột theo mẫu
-        const extraHeaders: string[] = [];
-        const extraValues: string[] = [];
-        industryList.slice(MAX_NGANH).forEach((c, i) => {
-            extraHeaders.push(`TEN_NGANH_${MAX_NGANH + i + 1}`, `MA_NGANH_${MAX_NGANH + i + 1}`);
-            extraValues.push(c.name, c.code);
-        });
-
-        // Header Row (Standardized Field Names)
-        const headers = [
-            // Thông tin chung
-            "CQ_DK_KD", "NGAY_THANG_NAM", "NGAY", "THANG", "NAM",
-            "LOAI_HINH", "TEN_TV", "TEN_TA", "TEN_VT",
-            "VON_SO", "VON_CHU",
-            // Trụ sở chính
-            "TS_DIA_CHI", "TS_PHUONG_XA", "TS_TINH_TP", "TS_QUOC_GIA", "TS_FULL",
-            "DT_CTY", "EMAIL", "WEBSITE",
-            // Ngành nghề (30 cặp cột cố định) + mã ngành chính
-            ...industryHeaders,
-            "NGANH_CHINH",
-            // Chủ sở hữu
-            "CHU_LOAI", "CHU_TEN", "CHU_GIOI_TINH", "CHU_SINH_NGAY", "CHU_LOAI_GT", "CHU_MS_SO_GT", "CHU_NGAY_CAP", "CHU_NOI_CAP",
-            "CHU_DIA_CHI", "CHU_PHUONG_XA", "CHU_TINH_TP", "CHU_SDT",
-            // Người đại diện theo ủy quyền (Chỉ dùng khi chủ sở hữu là tổ chức)
-            "UQ_TEN", "UQ_GIOI_TINH", "UQ_SINH_NGAY", "UQ_LOAI_GT", "UQ_SO_GT", "UQ_NGAY_CAP", "UQ_NOI_CAP",
-            "UQ_DIA_CHI", "UQ_PHUONG_XA", "UQ_TINH_TP", "UQ_QUOC_GIA",
-            "UQ_SDT",
-            // Chủ sở hữu hưởng lợi (Chỉ dùng khi chủ sở hữu là tổ chức)
-            "CSH_HL_TEN", "CSH_HL_GIOI_TINH", "CSH_HL_SINH_NGAY", "CSH_HL_LOAI_GT", "CSH_HL_SO_GT", "CSH_HL_NGAY_CAP", "CSH_HL_NOI_CAP",
-            "CSH_HL_DIA_CHI", "CSH_HL_PHUONG_XA", "CSH_HL_TINH_TP", "CSH_HL_QUOC_GIA",
-            // Người đại diện
-            "DAI_DIEN_TEN", "DAI_DIEN_GIOI_TINH", "DAI_DIEN_CHUC_DANH", "DAI_DIEN_SINH_NGAY", "DAI_DIEN_LOAI_GT", "DAI_DIEN_SO_GT", 
-            "DAI_DIEN_NGAY_CAP", "DAI_DIEN_NOI_CAP",
-            "DAI_DIEN_DIA_CHI", "DAI_DIEN_PHUONG_XA", "DAI_DIEN_TINH_TP", "DAI_DIEN_QUOC_TICH", "DAI_DIEN_SDT",
-            // Thuế
-            "THUE_DIA_CHI", "THUE_PHUONG_XA", "THUE_TINH_TP", "THUE_SDT", "THUE_EMAIL",
-            // Ngành thứ 31 trở đi (nếu có)
-            ...extraHeaders
-        ];
-
-        const exportCapital = info.capital ? info.capital.replace(/đồng/gi, '').trim() : '';
-        const values = [
-            // Thông tin chung
-            info.registrationOffice, dateFull, day, month, year,
-            info.type, info.name, info.nameEn, info.nameAbbr,
-            exportCapital, info.capitalInWords,
-            // Trụ sở chính
-            info.addressDetail, info.addressWard, info.addressCity, info.addressCountry, 
-            `${info.addressDetail}, ${info.addressWard}, ${info.addressCity}, ${info.addressCountry}`,
-            info.phone, info.email, info.website,
-            // Ngành nghề (30 cặp cột cố định) + mã ngành chính
-            ...industryValues,
-            nganhChinh,
-            // Chủ sở hữu
-            info.ownerType === 'individual' ? 'Cá nhân' : 'Tổ chức',
-            chuTen, chuGioiTinh, chuSinhNgay, chuLoaiGT, chuSoGT, chuNgayCap, chuNoiCap,
-            chuDiaChi, chuPhuong, chuTinh, chuSDT,
-            // Người đại diện theo ủy quyền
-            uqTen, uqGioiTinh, uqSinhNgay, uqLoaiGT, uqSoGT, uqNgayCap, uqNoiCap,
-            uqDiaChi, uqPhuong, uqTinh, uqQuocGia,
-            uqSDT,
-            // Chủ sở hữu hưởng lợi
-            cshHlTen, cshHlGioiTinh, cshHlSinhNgay, cshHlLoaiGT, cshHlSoGT, cshHlNgayCap, cshHlNoiCap,
-            cshHlDiaChi, cshHlPhuong, cshHlTinh, cshHlQuocGia,
-            // Người đại diện
-            info.ownerName, info.repGender || "", info.repTitle, info.repDob, getIdDocumentType(info.repIdNumber, info.repIdDocumentType, false), info.repIdNumber,
-            info.repIdDate, info.repIdPlace,
-            info.repAddressDetail, info.repAddressWard, info.repAddressCity, info.repAddressCountry || "", info.repPhone || "",
-            // Thuế
-            info.taxAddressDetail, info.taxAddressWard, info.taxAddressCity, info.taxPhone, info.taxEmail,
-            // Ngành thứ 31 trở đi (nếu có)
-            ...extraValues
-        ].map(v => (v === undefined || v === null ? "" : String(v)));
-
-        return { headers, values, industryCount: industryList.length, extraCount: extraHeaders.length / 2 };
-  };
+  const buildMailMerge = () => buildThanhLapRow(info);
 
   /** Tạo file Excel trộn thư (sheet Data_MailMerge: dòng 1 tên trường, dòng 2 dữ liệu). */
   const buildExcelBytes = (headers: string[], values: string[]): Uint8Array => {
@@ -1252,12 +1025,21 @@ const DocumentGenerator: React.FC = () => {
 
   const changeSummary = () => {
     const row = (k: string, v: string) => `| **${k}** | ${(v || '—').replace(/\|/g, '/')} |\n`;
+    const c = change;
+    if (c.cases.tamNgung) {
+      let t = `### TỔNG HỢP HỒ SƠ TẠM NGỪNG KINH DOANH\n\n| Trường thông tin | Nội dung |\n|---|---|\n`;
+      t += row('Doanh nghiệp', info.name);
+      t += row('Mã số doanh nghiệp', info.enterpriseCode || '');
+      t += row('Tạm ngừng', `từ ngày ${c.tnTuNgay || '?'} đến hết ngày ${denNgayTamNgung(c) || '?'}`);
+      t += row('Lý do', c.tnLyDo);
+      t += `\n\n*Thông báo tạm ngừng, Quyết định của chủ sở hữu và Giấy ủy quyền đã điền sẵn ở bên dưới.*`;
+      return t;
+    }
     let s = `### TỔNG HỢP HỒ SƠ ĐĂNG KÝ THAY ĐỔI\n\n| Trường thông tin | Nội dung |\n|---|---|\n`;
     s += row('Doanh nghiệp', info.name);
     s += row('Mã số doanh nghiệp', info.enterpriseCode || '');
     s += row('Đăng ký thay đổi lần thứ', String((Number(info.changeCount) || 0) + 1));
     s += row('Nội dung thay đổi', CHANGE_CASES.filter(c => change.cases[c.id]).map(c => c.label).join('; '));
-    const c = change;
     if (c.cases.doiTen) s += row('Tên mới', [c.newName, c.newNameEn, c.newNameAbbr].filter(Boolean).join(' / '));
     if (c.cases.diaChi) s += row('Trụ sở mới', [c.newAddressDetail, c.newAddressWard, c.newAddressCity].filter(Boolean).join(', '));
     if (c.cases.von) s += row('Vốn điều lệ', `${c.oldCapital || info.capital || '?'} → ${c.newCapital} (${c.newCapitalInWords})`);
@@ -1283,21 +1065,9 @@ const DocumentGenerator: React.FC = () => {
     try {
         if (isChangeTNHH1) {
             const { headers, values } = buildChangeExcel();
-            // Mẫu 12: luôn có khi có bất kỳ thay đổi nào (kể cả đổi đại diện, vì đổi đại diện kéo theo đổi thông tin
-            //   đăng ký thuế mục Giám đốc). Mẫu 13: khi đổi người đại diện theo pháp luật.
-            //   Quyết định của chủ sở hữu: khi đổi tên/địa chỉ/vốn/ngành/người đại diện.
-            //   Giấy ủy quyền (kiểu công ty): luôn kèm. Danh sách CSH hưởng lợi: chỉ khi đổi chủ sở hữu / CSH hưởng lợi.
-            const cs = change.cases;
-            const coThayDoi = Object.values(cs).some(Boolean);
-            const canCSH = cs.chuSoHuu || cs.chuHuongLoi;
-            const canQD = cs.doiTen || cs.diaChi || cs.von || cs.nganh || cs.daiDien;
-            const mau = [
-                ...(coThayDoi ? MAU_THAY_DOI_TNHH_1TV : []),
-                ...(cs.daiDien ? [MAU_DOI_DAI_DIEN] : []),
-                ...(canQD ? [MAU_QUYET_DINH] : []),
-                MAU_UY_QUYEN_THAY_DOI,
-                ...(canCSH ? [MAU_CSH_HUONG_LOI] : []),
-            ];
+            // Thành phần bộ hồ sơ theo trường hợp đã chọn: xem mauThayDoiTNHH1TV (services/tronHoSo.ts)
+            //   và docs/quy-tac-ho-so-thay-doi.md. Tạm ngừng kinh doanh làm riêng (Thông báo + Quyết định + Ủy quyền).
+            const mau = mauThayDoiTNHH1TV(change.cases);
             const cur = buildMailMerge();
             const curRec: Record<string, string> = {};
             cur.headers.forEach((h, i) => { curRec[h] = cur.values[i] ?? ''; });
@@ -1307,7 +1077,8 @@ const DocumentGenerator: React.FC = () => {
         const { headers, values } = buildMailMerge();
         const rec: MergeRecord = {};
         headers.forEach((h, i) => { rec[h.toUpperCase()] = values[i] ?? ''; });
-        setWordFiles(await tronBoHoSo(MAU_TNHH_1TV, rec));
+        // Đồng Nai: Điều lệ theo mẫu riêng của Phòng ĐKKD Đồng Nai
+        setWordFiles(await tronBoHoSo(mauThanhLapTNHH1TV(info), rec));
     } catch (e) {
         console.error("Tron ho so Word", e);
         setWordError(aiErrorMessage(e));
@@ -1324,7 +1095,7 @@ const DocumentGenerator: React.FC = () => {
         ...wordFiles.map(f => ({ name: f.name, bytes: f.bytes })),
         { name: `Du lieu - ${tenCty}.xlsx`, bytes: buildExcelBytes(headers, values) },
     ]);
-    downloadBytes(zip, `${isChangeTNHH1 ? 'Ho so thay doi' : 'Ho so'} - ${tenCty}.zip`, 'application/zip');
+    downloadBytes(zip, `${isChangeTNHH1 ? (change.cases.tamNgung ? 'Ho so tam ngung' : 'Ho so thay doi') : 'Ho so'} - ${tenCty}.zip`, 'application/zip');
   };
 
   const copyToClipboard = () => {
@@ -1382,7 +1153,7 @@ const DocumentGenerator: React.FC = () => {
                <FilePenLine className="w-8 h-8 text-emerald-600 group-hover:text-white transition-colors" />
             </div>
             <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-emerald-600 transition-colors">Thay đổi thông tin</h3>
-            <p className="text-slate-500 leading-relaxed">Soạn thảo hồ sơ thay đổi nội dung đăng ký kinh doanh như: đổi tên, địa chỉ, tăng vốn, thay đổi ngành nghề.</p>
+            <p className="text-slate-500 leading-relaxed">Soạn thảo hồ sơ thay đổi nội dung đăng ký kinh doanh như: đổi tên, địa chỉ, tăng vốn, thay đổi ngành nghề; tạm ngừng kinh doanh.</p>
           </button>
           <button onClick={() => handleTaskSelect('sauThanhLap')} className="group relative bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all duration-300 text-left">
             <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-amber-500 transition-colors duration-300">
@@ -2167,6 +1938,17 @@ const DocumentGenerator: React.FC = () => {
                                 <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm" placeholder="email@example.com" value={info.taxEmail} onChange={e => setInfo({ ...info, taxEmail: e.target.value })} />
                             </div>
                         </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">SĐT Giám đốc (mục 10.1)</label>
+                                <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm" placeholder={info.repPhone ? `Tự động: ${info.repPhone}` : 'Để trống = SĐT người đại diện'} value={info.gdPhone || ''} onChange={e => setInfo({ ...info, gdPhone: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Tổng số lao động (dự kiến)</label>
+                                <input type="text" className="w-full p-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm" placeholder="01" value={info.soLaoDong || ''} onChange={e => setInfo({ ...info, soLaoDong: e.target.value })} />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2208,7 +1990,9 @@ const DocumentGenerator: React.FC = () => {
                             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                                 <div>
                                     <h4 className="font-semibold text-slate-800">Hồ sơ Word đã điền sẵn</h4>
-                                    <p className="text-sm text-slate-500">{isChangeTNHH1
+                                    <p className="text-sm text-slate-500">{isChangeTNHH1 && change.cases.tamNgung
+                                        ? 'Thông báo tạm ngừng kinh doanh, Quyết định của chủ sở hữu và Giấy ủy quyền.'
+                                        : isChangeTNHH1
                                         ? 'Giấy đề nghị theo Mẫu số 12 (chỉ giữ các mục đã chọn), Mẫu số 13 khi đổi người đại diện, Giấy ủy quyền và Danh sách chủ sở hữu hưởng lợi.'
                                         : 'Giấy đề nghị, Điều lệ, Giấy ủy quyền và Danh sách chủ sở hữu hưởng lợi, trộn từ đúng dữ liệu trong file Excel; bảng ngành đã bỏ dòng trống và đánh lại STT.'}</p>
                                 </div>

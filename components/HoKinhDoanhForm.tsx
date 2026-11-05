@@ -74,7 +74,7 @@ const Card: React.FC<{ icon: React.ElementType; title: string; children: React.R
 const TINH_34 = [
   'Thành phố Hà Nội', 'Thành phố Huế', 'Lai Châu', 'Điện Biên', 'Sơn La', 'Lạng Sơn', 'Quảng Ninh', 'Thanh Hóa', 'Nghệ An', 'Hà Tĩnh',
   'Cao Bằng', 'Tuyên Quang', 'Lào Cai', 'Thái Nguyên', 'Phú Thọ', 'Bắc Ninh', 'Hưng Yên', 'Thành phố Hải Phòng', 'Ninh Bình', 'Quảng Trị',
-  'Thành phố Đà Nẵng', 'Quảng Ngãi', 'Gia Lai', 'Khánh Hòa', 'Lâm Đồng', 'Đắk Lắk', 'Thành phố Hồ Chí Minh', 'Đồng Nai', 'Tây Ninh',
+  'Thành phố Đà Nẵng', 'Quảng Ngãi', 'Gia Lai', 'Khánh Hòa', 'Lâm Đồng', 'Đắk Lắk', 'Thành phố Hồ Chí Minh', 'Thành phố Đồng Nai', 'Tây Ninh',
   'Thành phố Cần Thơ', 'Vĩnh Long', 'Đồng Tháp', 'Cà Mau', 'An Giang',
 ];
 

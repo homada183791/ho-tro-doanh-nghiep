@@ -102,6 +102,8 @@ export interface BusinessInfo {
   repAddressCountry: string;
 
   ownerGender?: string;
+  gdPhone?: string;     // SĐT Giám đốc (mục 10.1 Giấy đề nghị); trống = SĐT người đại diện
+  soLaoDong?: string;   // Tổng số lao động dự kiến (mục 10.7); trống = 01
   repGender?: string;
   beneficialOwnerGender?: string;
   orgLegalRepGender?: string;

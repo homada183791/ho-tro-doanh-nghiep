@@ -4,8 +4,9 @@
  */
 import type { IndustryCode } from '../types';
 import { tinhMoi, noiKyTheoTinh } from './tinhThanh';
+import { findVsic } from './vsic';
 
-export type ChangeCaseId = 'doiTen' | 'diaChi' | 'von' | 'nganh' | 'daiDien' | 'chuSoHuu' | 'capNhat' | 'chuHuongLoi';
+export type ChangeCaseId = 'doiTen' | 'diaChi' | 'von' | 'nganh' | 'daiDien' | 'chuSoHuu' | 'capNhat' | 'chuHuongLoi' | 'tamNgung';
 
 export const CHANGE_CASES: { id: ChangeCaseId; label: string; col: string }[] = [
   { id: 'doiTen', label: 'Đổi tên công ty', col: 'TD_DOI_TEN' },
@@ -16,6 +17,8 @@ export const CHANGE_CASES: { id: ChangeCaseId; label: string; col: string }[] = 
   { id: 'chuSoHuu', label: 'Thay đổi chủ sở hữu', col: 'TD_CHU_SO_HUU' },
   { id: 'capNhat', label: 'Bổ sung, cập nhật thông tin (Mục B)', col: 'TD_CAP_NHAT' },
   { id: 'chuHuongLoi', label: 'Chủ sở hữu hưởng lợi', col: 'TD_CSH_HL' },
+  // Làm riêng, không đi cùng các trường hợp khác: Thông báo tạm ngừng + Quyết định + Giấy ủy quyền
+  { id: 'tamNgung', label: 'Tạm ngừng kinh doanh', col: 'TD_TAM_NGUNG' },
 ];
 
 /** Mục B: người cần cập nhật địa chỉ liên hệ. */
@@ -67,10 +70,16 @@ export interface ChangeData {
   hlTB: 'a' | 'b';
   // Người ký giấy đề nghị (để trống: tự chọn)
   signer: string;
+  // 9. Tạm ngừng kinh doanh (doanh nghiệp): từ ngày – đến hết ngày (dd/mm/yyyy), lý do, liên hệ người đại diện
+  tnTuNgay: string; tnDenNgay: string; tnLyDo: string; tnSdt: string; tnEmail: string;
+  // Email nhận thông báo thuế (Mẫu 12, mục địa chỉ nhận thông báo thuế); trống = email công ty
+  thueEmail: string;
+  // Bảng bỏ ngành: tự ghi chú "bị xóa/bị thay đổi theo Quyết định số 36/2025/QĐ-TTg" (cập nhật mã ngành VSIC 2025)
+  rutGhiChu36: boolean;
 }
 
 export const emptyChange = (): ChangeData => ({
-  cases: { doiTen: false, diaChi: false, von: false, nganh: false, daiDien: false, chuSoHuu: false, capNhat: false, chuHuongLoi: false },
+  cases: { doiTen: false, diaChi: false, von: false, nganh: false, daiDien: false, chuSoHuu: false, capNhat: false, chuHuongLoi: false, tamNgung: false },
   newName: '', newNameEn: '', newNameAbbr: '',
   newAddressDetail: '', newAddressWard: '', newAddressCity: '', newPhone: '', newEmail: '', newWebsite: '',
   oldCapital: '', oldCapitalInWords: '',
@@ -83,7 +92,42 @@ export const emptyChange = (): ChangeData => ({
   hlNguon: '', hl: emptyPerson(),
   sdtGiamDoc: '', sdtCongTy: '', gcnNumber: '', gcnDate: '', hlTB: 'b',
   signer: '',
+  tnTuNgay: '', tnDenNgay: '', tnLyDo: 'Kinh doanh không hiệu quả', tnSdt: '', tnEmail: '',
+  thueEmail: '', rutGhiChu36: true,
 });
+
+/**
+ * Ghi chú ngành bỏ theo Quyết định 36/2025/QĐ-TTg (VSIC 2025):
+ * mã còn trong danh mục 2025 -> "bị thay đổi", mã không còn -> "bị xóa".
+ */
+export const ghiChuNganhBo = (code: string) =>
+  `Ngành, nghề kinh doanh bị ${findVsic(code) ? 'thay đổi' : 'xóa'} theo Quyết định số 36/2025/QĐ-TTg`;
+
+/* ---------- Tạm ngừng kinh doanh ---------- */
+const DATE_RE = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/;
+/** "1/10/2026" -> { d: '01', m: '10', y: '2026' } (null nếu sai định dạng hoặc ngày không có thật). */
+export const tachNgay = (s: string): { d: string; m: string; y: string } | null => {
+  const m = (s || '').match(DATE_RE);
+  if (!m) return null;
+  const [d, mo, y] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return { d: String(d).padStart(2, '0'), m: String(mo).padStart(2, '0'), y: String(y) };
+};
+const toDate = (x: { d: string; m: string; y: string }) => new Date(Number(x.y), Number(x.m) - 1, Number(x.d));
+const fmtNgay = (dt: Date) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+/** Đến hết ngày mặc định: tròn 1 năm kể từ ngày bắt đầu (01/10/2026 -> 30/09/2027). */
+export const denNgayMacDinh = (tu: string): string => {
+  const t = tachNgay(tu);
+  if (!t) return '';
+  const dt = toDate(t);
+  dt.setFullYear(dt.getFullYear() + 1);
+  dt.setDate(dt.getDate() - 1);
+  return fmtNgay(dt);
+};
+/** Ngày kết thúc thực dùng: ô nhập, hoặc mặc định 1 năm. */
+export const denNgayTamNgung = (c: ChangeData) => (c.tnDenNgay || '').trim() || denNgayMacDinh(c.tnTuNgay);
+
 
 /**
  * Ký hiệu viết tắt từ tên công ty: bỏ phần loại hình, lấy chữ cái đầu mỗi từ, bỏ dấu.
@@ -193,13 +237,26 @@ export const buildChangeRow = (
   add('QD_SO', '01/QĐ');
   add('GCN_SO', (c.gcnNumber || '').trim() || gpkd.enterpriseCode || '');
   add('GCN_NGAY_CAP', (c.gcnDate || '').trim() || gpkd.firstRegDate || '');
+  // Tạm ngừng kinh doanh: số thông báo 01/<ký hiệu>-TB, nơi ký ghi đủ ("Thành phố Hồ Chí Minh", "Tỉnh Tây Ninh")
+  const tinhTs = tinhMoi(tpTruSo);
+  add('NOI_KY_DD', tinhTs ? (/^Thành phố\s/.test(tinhTs) ? tinhTs : `Tỉnh ${tinhTs}`) : tpTruSo);
+  const tn = c.cases.tamNgung;
+  const tu = tn ? tachNgay(c.tnTuNgay) : null;
+  const den = tn ? tachNgay(denNgayTamNgung(c)) : null;
+  const CHAM_TN = '…………';
+  add('SO_TB', tn ? `01/${kyHieuTen(current.TEN_TV)}-TB` : '');
+  add('TN_TU_NGAY', tu?.d ?? (tn ? '…' : '')); add('TN_TU_THANG', tu?.m ?? (tn ? '…' : '')); add('TN_TU_NAM', tu?.y ?? (tn ? '…' : ''));
+  add('TN_DEN_NGAY', den?.d ?? (tn ? '…' : '')); add('TN_DEN_THANG', den?.m ?? (tn ? '…' : '')); add('TN_DEN_NAM', den?.y ?? (tn ? '…' : ''));
+  add('TN_LY_DO', tn ? (c.tnLyDo || '').trim() || CHAM_TN : '');
+  add('TN_SDT', tn ? (c.tnSdt || '').trim() || sdtGd || current.DAI_DIEN_SDT || CHAM_TN : '');
+  add('TN_EMAIL', tn ? (c.tnEmail || '').trim() || CHAM_TN : '');
 
   // Thông tin hiện tại
   CURRENT_COLS.slice(6).forEach((k) => add(k, current[k]));
 
   // Trường hợp thay đổi (X = có)
   CHANGE_CASES.forEach((cs) => add(cs.col, c.cases[cs.id] ? 'X' : ''));
-  add('TD_MUC_A', CHANGE_CASES.some((cs) => cs.id !== 'capNhat' && c.cases[cs.id]) ? 'X' : '');
+  add('TD_MUC_A', CHANGE_CASES.some((cs) => cs.id !== 'capNhat' && cs.id !== 'tamNgung' && c.cases[cs.id]) ? 'X' : '');
   add('TD_DANH_SACH', CHANGE_CASES.filter((cs) => c.cases[cs.id]).map((cs) => cs.label).join('; '));
 
   // 1. Tên mới
@@ -246,9 +303,11 @@ export const buildChangeRow = (
     add(`THEM_CHINH_${i + 1}`, them[i]?.isMain ? 'X' : '');
   }
   add('THEM_NGANH_CHINH', them.find((x) => x.isMain)?.code || '');
+  const ghiChu36 = c.rutGhiChu36 !== false;
   for (let i = 0; i < MAX_NGANH; i++) {
     add(`RUT_TEN_NGANH_${i + 1}`, rut[i]?.name);
     add(`RUT_MA_NGANH_${i + 1}`, rut[i]?.code);
+    add(`RUT_GHI_CHU_${i + 1}`, rut[i]?.code && ghiChu36 ? ghiChuNganhBo(rut[i].code) : '');
   }
 
   // 5. Người đại diện mới
@@ -299,7 +358,8 @@ export const buildChangeRow = (
   add('THUE_MOI_PHUONG_XA', thueA ? c.newAddressWard : thueB ? c.cnTsWard : '');
   add('THUE_MOI_TINH_TP', thueA ? c.newAddressCity : thueB ? c.cnTsCity : '');
   add('THUE_MOI_SDT', thueA ? c.newPhone || sdtCty : thueB ? sdtCty : '');
-  add('THUE_MOI_EMAIL', thueA ? c.newEmail : '');
+  // Email nhận thông báo thuế: ô nhập riêng > email trụ sở mới (đổi địa chỉ) > email công ty
+  add('THUE_MOI_EMAIL', thueA || thueB ? (c.thueEmail || '').trim() || (thueA ? c.newEmail : '') || current.EMAIL || '' : '');
   // Thuế – chỉ tiêu 1 (Giám đốc/Tổng giám đốc):
   //  - đổi người đại diện: điền người đại diện mới;
   //  - Mục B có cập nhật địa chỉ liên hệ của người đại diện hiện tại là Giám đốc/Tổng giám đốc: điền người đó (theo GPKD).
@@ -323,6 +383,8 @@ export const buildChangeRow = (
   add('TB_HL_B', hl ? (c.hlTB !== 'a' ? 'X' : '') : on.chuSoHuu ? 'X' : '');
 
   add('NGUOI_KY', nguoiKyMacDinh(c, current));
+  // Người ký Quyết định (mục CHỦ SỞ HỮU) của hồ sơ tạm ngừng: chủ sở hữu cá nhân; chủ sở hữu tổ chức thì người ký hồ sơ
+  add('CHU_KY', current.CHU_LOAI !== 'Tổ chức' && current.CHU_TEN ? current.CHU_TEN : nguoiKyMacDinh(c, current));
 
   // Quá 30 ngành: thêm cột ở cuối để không lệch vị trí
   them.slice(MAX_NGANH).forEach((x, i) => { add(`THEM_TEN_NGANH_${MAX_NGANH + i + 1}`, x.name); add(`THEM_MA_NGANH_${MAX_NGANH + i + 1}`, x.code); });
@@ -335,6 +397,17 @@ export const buildChangeRow = (
 export const kiemTraThayDoi = (c: ChangeData, gpkd: { enterpriseCode?: string; name?: string; capital?: string }): string[] => {
   const err: string[] = [];
   if (!Object.values(c.cases).some(Boolean)) err.push('Chưa chọn trường hợp thay đổi nào.');
+  if (c.cases.tamNgung) {
+    const tu = tachNgay(c.tnTuNgay), den = tachNgay(denNgayTamNgung(c));
+    if (!tu) err.push('Tạm ngừng: chưa nhập đúng ngày bắt đầu (dd/mm/yyyy).');
+    if ((c.tnDenNgay || '').trim() && !den) err.push('Tạm ngừng: ngày kết thúc sai định dạng (dd/mm/yyyy).');
+    if (tu && den) {
+      const a = toDate(tu), b = toDate(den);
+      const max = new Date(a); max.setFullYear(max.getFullYear() + 1); max.setDate(max.getDate() - 1);
+      if (b < a) err.push('Tạm ngừng: ngày kết thúc trước ngày bắt đầu.');
+      else if (b > max) err.push(`Tạm ngừng: mỗi lần thông báo không quá 01 năm (đến hết ngày ${fmtNgay(max)}).`);
+    }
+  }
   if (!gpkd.name?.trim()) err.push('Chưa có tên doanh nghiệp (rút trích GPKD hoặc nhập tay).');
   if (!gpkd.enterpriseCode) err.push('Chưa có mã số doanh nghiệp (rút trích GPKD hoặc nhập tay).');
   if (c.cases.doiTen && !c.newName.trim()) err.push('Đổi tên: chưa nhập tên mới bằng tiếng Việt.');

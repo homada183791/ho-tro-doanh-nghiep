@@ -417,7 +417,7 @@ export const updateAdministrativeDivisions = async (
   - Tỉnh/Thành MỚI: Lâm Đồng <- Cũ: Đắk Nông, Bình Thuận, Lâm Đồng
   - Tỉnh/Thành MỚI: Đắk Lắk <- Cũ: Phú Yên, Đắk Lắk
   - Tỉnh/Thành MỚI: Thành phố Hồ Chí Minh <- Cũ: TP.HCM, Bà Rịa – Vũng Tàu, Bình Dương
-  - Tỉnh/Thành MỚI: Đồng Nai <- Cũ: Bình Phước, Đồng Nai
+  - Tỉnh/Thành MỚI: Thành phố Đồng Nai (trực thuộc trung ương từ 30/4/2026, ghi "Thành phố Đồng Nai", không ghi "Tỉnh Đồng Nai") <- Cũ: Bình Phước, Đồng Nai
   - Tỉnh/Thành MỚI: Tây Ninh <- Cũ: Long An, Tây Ninh
   - Tỉnh/Thành MỚI: Cần Thơ <- Cũ: Cần Thơ, Sóc Trăng, Hậu Giang
   - Tỉnh/Thành MỚI: Vĩnh Long <- Cũ: Bến Tre, Trà Vinh, Vĩnh Long

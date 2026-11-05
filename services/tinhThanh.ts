@@ -32,7 +32,8 @@ const SAP_NHAP: Record<string, string[]> = {
   'Lâm Đồng': ['Đắk Nông', 'Bình Thuận', 'Lâm Đồng'],
   'Đắk Lắk': ['Phú Yên', 'Đắk Lắk'],
   'Thành phố Hồ Chí Minh': ['Hồ Chí Minh', 'HCM', 'TPHCM', 'Sài Gòn', 'Bà Rịa - Vũng Tàu', 'Bà Rịa Vũng Tàu', 'Vũng Tàu', 'Bình Dương'],
-  'Đồng Nai': ['Bình Phước', 'Đồng Nai'],
+  // Thành phố Đồng Nai trực thuộc trung ương từ 30/4/2026
+  'Thành phố Đồng Nai': ['Bình Phước', 'Đồng Nai'],
   'Tây Ninh': ['Long An', 'Tây Ninh'],
   'Thành phố Cần Thơ': ['Sóc Trăng', 'Hậu Giang', 'Cần Thơ'],
   'Vĩnh Long': ['Bến Tre', 'Trà Vinh', 'Vĩnh Long'],
