@@ -56,6 +56,7 @@ export interface ChangeData {
   newOwnerOrgCode: string;
   // 7. Mục B – bổ sung, cập nhật thông tin
   cnTruSo: boolean; cnTsDetail: string; cnTsWard: string; cnTsCity: string;
+  cnEmail: string;
   cnLienHe: boolean; cnNguoi: CapNhatNguoi[];
   // Chủ sở hữu hưởng lợi (Danh sách chủ sở hữu hưởng lợi): lấy theo chủ sở hữu, người đại diện, hoặc nhập người khác
   hlNguon: '' | 'chu' | 'daiDien' | 'khac';
@@ -90,6 +91,7 @@ export const emptyChange = (): ChangeData => ({
   newRep: { ...emptyPerson(), title: 'Giám đốc' },
   newOwnerType: 'individual', newOwner: emptyPerson(), newOwnerOrgCode: '',
   cnTruSo: false, cnTsDetail: '', cnTsWard: '', cnTsCity: '',
+  cnEmail: '',
   cnLienHe: false, cnNguoi: [],
   hlNguon: '', hl: emptyPerson(),
   sdtGiamDoc: '', sdtCongTy: '', gcnNumber: '', gcnCoQuan: '', gcnDate: '', hlTB: 'b',
@@ -138,6 +140,10 @@ const coQuanTheoNgay = (ngay: string, cqHienTai: string) => {
 };
 
 /* ---------- Tạm ngừng kinh doanh ---------- */
+const nameEq = (a: string, b: string) => {
+  const n = (x: string) => (x || '').normalize('NFC').trim().toUpperCase().replace(/\s+/g, ' ');
+  return !!n(a) && n(a) === n(b);
+};
 const DATE_RE = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/;
 /** "1/10/2026" -> { d: '01', m: '10', y: '2026' } (null nếu sai định dạng hoặc ngày không có thật). */
 export const tachNgay = (s: string): { d: string; m: string; y: string } | null => {
@@ -386,18 +392,32 @@ export const buildChangeRow = (
 
   // 7. Mục B – bổ sung, cập nhật thông tin
   const cnTs = on.capNhat && c.cnTruSo;
+  const cnEmail = on.capNhat ? (c.cnEmail || '').trim() : '';
   const cnLh = on.capNhat && c.cnLienHe ? c.cnNguoi.filter((x) => x.name.trim()) : [];
   add('CN_TRU_SO', cnTs ? 'X' : '');
   add('CN_TS_DIA_CHI', cnTs ? c.cnTsDetail : '');
   add('CN_TS_PHUONG_XA', cnTs ? c.cnTsWard : '');
   add('CN_TS_TINH_TP', cnTs ? c.cnTsCity : '');
+  add('CN_EMAIL', cnEmail);
+  add('CN_EMAIL_STT', cnEmail ? (cnTs ? '2' : '1') : '');
   add('CN_LIEN_HE', cnLh.length ? 'X' : '');
-  add('CN_LH_STT', cnLh.length ? (cnTs ? '2' : '1') : '');
+  add('CN_LH_STT', cnLh.length ? ((cnTs && cnEmail) ? '3' : (cnTs || cnEmail) ? '2' : '1') : '');
   for (let i = 0; i < MAX_CN_NGUOI; i++) {
     const x = cnLh[i];
     add(`CN_LH_TEN_${i + 1}`, x ? x.name.toUpperCase() : '');
     add(`CN_LH_DIA_CHI_${i + 1}`, x ? diaChiDayDu(x) : '');
     add(`CN_LH_VAI_TRO_${i + 1}`, x ? x.role : '');
+    // "- Ông: LƯU TRUNG HIẾU" (Bảo Sơn Phúc – Mẫu 12, mục B.2): Ông/Bà theo giới tính của chủ sở hữu / người đại diện
+    const gt = !x ? '' : nameEq(x.name, current.CHU_TEN) ? current.CHU_GIOI_TINH : nameEq(x.name, current.DAI_DIEN_TEN) ? current.DAI_DIEN_GIOI_TINH : '';
+    add(`CN_LH_XUNG_${i + 1}`, !x ? '' : /nữ/i.test(gt || '') ? 'Bà' : /nam/i.test(gt || '') ? 'Ông' : 'Ông/Bà');
+  }
+  // Tiêu đề B.2: "Cập nhật địa chỉ liên lạc chủ sở hữu / người đại diện theo pháp luật / chủ sở hữu và người đại diện theo pháp luật của công ty"
+  {
+    const coChu = cnLh.some((x) => nameEq(x.name, current.CHU_TEN));
+    const coDd = cnLh.some((x) => nameEq(x.name, current.DAI_DIEN_TEN));
+    const khac = cnLh.some((x) => !nameEq(x.name, current.CHU_TEN) && !nameEq(x.name, current.DAI_DIEN_TEN));
+    add('CN_LH_DOI_TUONG', !cnLh.length ? '' : coChu && !coDd && !khac ? 'chủ sở hữu' : coDd && !coChu && !khac ? 'người đại diện theo pháp luật'
+      : 'chủ sở hữu và người đại diện theo pháp luật');
   }
 
   // Địa chỉ nhận thông báo thuế: đổi trụ sở (Mục A) thì theo địa chỉ mới; chỉ cập nhật (Mục B) thì theo địa chỉ cập nhật
@@ -409,6 +429,7 @@ export const buildChangeRow = (
   add('THUE_MOI_TINH_TP', thueA ? c.newAddressCity : thueB ? c.cnTsCity : '');
   add('THUE_MOI_SDT', thueA ? c.newPhone || sdtCty : thueB ? sdtCty : '');
   // Email nhận thông báo thuế: ô nhập riêng > email trụ sở mới (đổi địa chỉ) > email công ty
+  add('THUE_MOI_FAX', '');
   add('THUE_MOI_EMAIL', thueA || thueB ? (c.thueEmail || '').trim() || (thueA ? c.newEmail : '') || current.EMAIL || '' : '');
   // Thuế – chỉ tiêu 1 (Giám đốc/Tổng giám đốc): có phần thông tin đăng ký thuế thì luôn điền Giám đốc
   //  (theo bộ Lemar, Toàn Gia Phú – mau-so-12-truong-hop1.docx):
@@ -443,6 +464,15 @@ export const buildChangeRow = (
   them.slice(MAX_NGANH).forEach((x, i) => { add(`THEM_TEN_NGANH_${MAX_NGANH + i + 1}`, x.name); add(`THEM_MA_NGANH_${MAX_NGANH + i + 1}`, x.code); });
   rut.slice(MAX_NGANH).forEach((x, i) => { add(`RUT_TEN_NGANH_${MAX_NGANH + i + 1}`, x.name); add(`RUT_MA_NGANH_${MAX_NGANH + i + 1}`, x.code); });
 
+  // Phần thông tin đăng ký thuế (Mẫu 12): ô nào không có dữ liệu thì để dấu chấm (Bảo Sơn Phúc, Y Tế Quốc Tế – Mẫu 12, phần thuế)
+  if (tdThue) {
+    const CHAM: Record<string, string> = { GD_SINH_NGAY: '……/……/……', THUE_MOI_SDT: '…………', THUE_MOI_FAX: '…………' };
+    for (const row of cols) {
+      if (/^(GD_(TEN|SINH_NGAY|GIOI_TINH|SO_GT|SDT)|THUE_MOI_(DIA_CHI|PHUONG_XA|TINH_TP|SDT|FAX|EMAIL))$/.test(row[0]) && !String(row[1] ?? '').trim()) {
+        row[1] = CHAM[row[0]] || '…………………';
+      }
+    }
+  }
   return { headers: cols.map(([k]) => k), values: cols.map(([, v]) => String(v ?? '')) };
 };
 
@@ -471,7 +501,7 @@ export const kiemTraThayDoi = (c: ChangeData, gpkd: { enterpriseCode?: string; n
   if (c.cases.daiDien && !c.newRep.name.trim()) err.push('Đổi người đại diện: chưa nhập họ tên người đại diện mới.');
   if (c.cases.chuSoHuu && !c.newOwner.name.trim()) err.push('Đổi chủ sở hữu: chưa nhập tên chủ sở hữu mới.');
   if (c.cases.capNhat) {
-    if (!c.cnTruSo && !c.cnLienHe) err.push('Mục B: chưa chọn nội dung cập nhật.');
+    if (!c.cnTruSo && !(c.cnEmail || '').trim() && !c.cnLienHe) err.push('Mục B: chưa chọn nội dung cập nhật.');
     if (c.cnTruSo && !(c.cnTsDetail.trim() && c.cnTsCity.trim())) err.push('Mục B: chưa nhập đủ địa chỉ trụ sở cập nhật.');
     if (c.cnLienHe && !c.cnNguoi.some((x) => x.name.trim())) err.push('Mục B: chưa có người cần cập nhật địa chỉ liên hệ.');
   }
@@ -509,6 +539,9 @@ export const buildChangeWordRecord = (
     so: rec.DAI_DIEN_SO_GT, ngay: rec.DAI_DIEN_NGAY_CAP, noi: rec.DAI_DIEN_NOI_CAP, dc: rec.DAI_DIEN_DIA_CHI, px: rec.DAI_DIEN_PHUONG_XA, tp: rec.DAI_DIEN_TINH_TP });
 
   const daiDienGoc = tuDaiDien();
+  // Người đại diện cũ (Quyết định đổi đại diện – Bảo Sơn Phúc QĐ.docx): giữ trước khi DAI_DIEN_* bị thay bằng người ký
+  rec.DD_CU_TEN = daiDienGoc.ten || '';
+  rec.DD_CU_CHUC_DANH = rec.DAI_DIEN_CHUC_DANH || '';
 
   // Người ký hồ sơ -> DAI_DIEN_* (Giấy ủy quyền, chữ ký danh sách hưởng lợi).
   // Giấy ủy quyền ký theo thông tin ĐANG đăng ký, nên giữ địa chỉ cũ (không lấy địa chỉ cập nhật ở Mục B).
@@ -516,6 +549,12 @@ export const buildChangeWordRecord = (
   if (ky && ky === norm(rec.CHU_TEN) && rec.CHU_LOAI !== 'Tổ chức') dat('DAI_DIEN', tuChu(), false);
   else if (ky && ky === norm(rec.DAI_DIEN_TEN)) dat('DAI_DIEN', tuDaiDien(), false);
   else if (ky) dat('DAI_DIEN', { ten: rec.NGUOI_KY, gioi: '', sinh: '', loai: '', so: '', ngay: '', noi: '', dc: '', px: '', tp: '' });
+  // Chức danh người ký: bình thường người đại diện theo pháp luật ký; đổi người đại diện thì chủ sở hữu ký
+  // -> "CHỦ TỊCH CÔNG TY" (Bảo Sơn Phúc, Y Tế Quốc Tế: Mẫu 12, Mẫu 13, CSH) và Giấy ủy quyền "Là Chủ tịch công ty của …".
+  const chuKy = !!ky && ky === norm(rec.CHU_TEN) && rec.CHU_LOAI !== 'Tổ chức' && (c.cases.daiDien || ky !== norm(daiDienGoc.ten));
+  rec.KY_CHUC_DANH = chuKy ? 'CHỦ TỊCH CÔNG TY' : 'NGƯỜI ĐẠI DIỆN THEO PHÁP LUẬT';
+  rec.UQ_LA = chuKy ? 'Là Chủ tịch công ty' : 'Là người đại diện theo pháp luật';
+  rec.UQ_CO_CD = chuKy ? '' : 'X';
 
   // Chủ sở hữu hưởng lợi
   const tuNguoi = (o: PersonInfo) => ({ ten: o.name.toUpperCase(), gioi: o.gender, sinh: o.dob, loai: loaiGiayTo(o.idNumber, o.idType), so: o.idNumber,

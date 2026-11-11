@@ -778,6 +778,16 @@ export const ChangeCases: React.FC<{
             </div>
           )}
 
+          <div className="pt-2">
+            <label className={labelCls}>Thư điện tử (email) mới của công ty (nếu có)</label>
+            <input type="email" className={inputCls} value={change.cnEmail || ''}
+              onChange={(e) => upd('cnEmail', e.target.value)}
+              placeholder={info.email ? `Hiện tại: ${info.email}` : 'email@congty.vn'} />
+            {change.cnEmail && info.email && change.cnEmail.trim() === info.email.trim() && (
+              <p className="text-xs text-amber-700 mt-1">Email nhập vào trùng email trên GPKD – kiểm tra lại.</p>
+            )}
+          </div>
+
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700 pt-2">
             <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={change.cnLienHe}
               onChange={(e) => { const v = e.target.checked; setChange((c) => ({ ...c, cnLienHe: v, cnNguoi: v && !c.cnNguoi.length ? nguoiTuGpkd().map((x) => ({ ...x, goc: diaChiDayDuNgan(x) })) : c.cnNguoi })); }} />

@@ -195,7 +195,7 @@ export const buildThanhLapRow = (info: BusinessInfo) => {
       "DAI_DIEN_NGAY_CAP", "DAI_DIEN_NOI_CAP",
       "DAI_DIEN_DIA_CHI", "DAI_DIEN_PHUONG_XA", "DAI_DIEN_TINH_TP", "DAI_DIEN_QUOC_TICH", "DAI_DIEN_SDT",
       // Thuế
-      "GD_SDT", "SO_LAO_DONG",
+      "GD_SDT", "SO_LAO_DONG", "KY_CHUC_DANH",
       "THUE_DIA_CHI", "THUE_PHUONG_XA", "THUE_TINH_TP", "THUE_SDT", "THUE_EMAIL",
       // Ngành thứ 31 trở đi (nếu có)
       ...extraHeaders
@@ -230,7 +230,7 @@ export const buildThanhLapRow = (info: BusinessInfo) => {
       info.repIdDate, info.repIdPlace,
       info.repAddressDetail, info.repAddressWard, info.repAddressCity, info.repAddressCountry || "", info.repPhone || "",
       // Thuế: SĐT Giám đốc (mục 10.1, Giám đốc = người đại diện), tổng số lao động dự kiến (mặc định 01)
-      (info.gdPhone || '').trim() || info.repPhone || "", (info.soLaoDong || '').trim() || "01",
+      (info.gdPhone || '').trim() || info.repPhone || "", (info.soLaoDong || '').trim() || "01", "NGƯỜI ĐẠI DIỆN THEO PHÁP LUẬT",
       info.taxAddressDetail, info.taxAddressWard, info.taxAddressCity, info.taxPhone, info.taxEmail,
       // Ngành thứ 31 trở đi (nếu có)
       ...extraValues

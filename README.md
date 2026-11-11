@@ -2,7 +2,11 @@
 
 Web hỗ trợ soạn hồ sơ đăng ký doanh nghiệp: rút trích giấy tờ bằng AI, tra mã ngành VSIC 2025, cập nhật địa chỉ theo đơn vị hành chính mới, xuất file Excel trộn thư và trộn sẵn bộ hồ sơ Word ngay trên trình duyệt.
 
-Công nghệ: React 19, Vite 6, TypeScript, Tailwind (CDN), `@google/genai`, `xlsx`.
+Công nghệ: React 19, Vite 6, TypeScript, Tailwind (CDN), `@google/genai`, `xlsx`, `pdf-lib`, `docx-preview`.
+
+- Bản chạy online: **https://ho-tro-doanh-nghiep.vercel.app** (Vercel, project `ho-tro-doanh-nghiep`), có khoá mật khẩu theo từng máy.
+- Mã nguồn: `github.com/homada183791/tr-l-h-s-doanh-nghi-p`.
+- Quy tắc soạn hồ sơ đã chốt theo hồ sơ thật: [`docs/quy-tac-ho-so-thay-doi.md`](docs/quy-tac-ho-so-thay-doi.md). Lịch sử cập nhật: [mục 12](#12-nhật-ký-cập-nhật).
 
 ---
 
@@ -20,6 +24,7 @@ Công nghệ: React 19, Vite 6, TypeScript, Tailwind (CDN), `@google/genai`, `xl
 9. [Giao diện](#9-giao-diện)
 10. [Cấu trúc thư mục](#10-cấu-trúc-thư-mục)
 11. [Xử lý sự cố thường gặp](#11-xử-lý-sự-cố-thường-gặp)
+12. [Nhật ký cập nhật](#12-nhật-ký-cập-nhật)
 
 ---
 
@@ -49,6 +54,28 @@ Nhấp đúp `start-public.bat`. File này tự làm 5 bước:
 - Người ngoài vào link phải nhập mật khẩu; máy chủ (localhost) không cần.
 - Link trycloudflare đổi mỗi lần chạy lại.
 - Đóng cửa sổ chính sẽ tắt cả máy chủ và tunnel.
+
+### Chạy trên Vercel
+
+Vercel tự build mỗi khi có commit mới trên nhánh `main`. Máy chủ AI và mẫu hồ sơ sau thành lập chạy bằng hàm serverless trong `api/` (`ai.js`, `stl.js`), khoá mật khẩu ở `middleware.js`, đường dẫn ở `vercel.json`.
+
+Biến môi trường (Vercel → Settings → Environment Variables, sửa xong bấm **Redeploy**):
+
+| Biến | Dùng cho |
+|---|---|
+| `AI_CONFIG_JSON` | Toàn bộ nội dung `tools/ai-config.json` (nhà cung cấp, Base URL, key, model) |
+| `STL_CONFIG_JSON` | Thông tin dùng chung của hồ sơ sau thành lập |
+| `LEGALBIZ_PUBLIC_NGUOI_NOP_*` | Người nộp mặc định hồ sơ hộ kinh doanh (6 biến) |
+| `ADMIN_PASSWORD` | Mật khẩu trang quản lý `/__quan-tri` |
+| `SESSION_SECRET` | Ký cookie đăng nhập |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Kho Upstash Redis lưu danh sách mật khẩu theo máy |
+| `SITE_PASSWORD` | Chỉ dùng khi chưa nối Redis (một mật khẩu chung) |
+
+**Mật khẩu theo máy:** mỗi mật khẩu khoá vào máy đăng nhập đầu tiên. Vào `/__quan-tri` (đăng nhập bằng `ADMIN_PASSWORD`) để thêm/xoá mật khẩu, gỡ máy, chặn máy.
+
+### Đưa code lên GitHub
+
+Sửa code trên máy → commit → nhấp đúp `day-len-github.bat` (đẩy nhánh `main`) → Vercel tự build. File `.bat` phải giữ xuống dòng kiểu Windows (CRLF).
 
 ---
 
@@ -110,10 +137,16 @@ Menu **Soạn hồ sơ → Thành lập mới →** chọn loại hình.
 - Bảng tổng hợp để kiểm tra.
 - **Tải về (.xlsx):** file Excel trộn thư đúng mẫu `MailMerge_Data_30nganh` (xem [mục 6](#6-file-excel-trộn-thư)).
 - **Công ty TNHH 1 thành viên:** trộn sẵn 4 file Word, tải từng file hoặc **Tải trọn bộ (.zip)** (kèm file Excel):
-  - Giấy đề nghị đăng ký doanh nghiệp
-  - Điều lệ công ty
-  - Giấy ủy quyền nộp hồ sơ
+  - Giấy đề nghị đăng ký doanh nghiệp (Mẫu 02)
+  - Điều lệ công ty — **nộp tại Đồng Nai** (chủ sở hữu cá nhân) thì tự dùng **mẫu Điều lệ riêng của Phòng ĐKKD Thành phố Đồng Nai**
+  - Giấy ủy quyền nộp hồ sơ (kiểu cá nhân)
   - Danh sách chủ sở hữu hưởng lợi
+
+**Mẫu 02 điền sẵn:** vốn ghi kèm "VNĐ"; năm tài chính "01/01 đến 31/12"; tổng số lao động mặc định **01** (ô "Tổng số lao động" để sửa); mục 10.1 có SĐT Giám đốc (ô "SĐT Giám đốc", trống = SĐT người đại diện). Ô vuông đánh dấu sẵn: Thành lập mới, đất đảo "Không", hiển thị ngoại tệ "Không", Hạch toán độc lập, BOT "Không", Khấu trừ, BHXH hàng tháng.
+
+**Đồng Nai** là thành phố trực thuộc trung ương từ 30/4/2026: web ghi "Thành phố Đồng Nai" (cơ quan đăng ký, nơi ký, địa chỉ); chữ "Tỉnh Đồng Nai" trong dữ liệu được tự đổi.
+
+> Bảng ngành trong mẫu Word chứa tối đa **30 ngành**; hồ sơ nhiều ngành hơn phải bổ sung tay.
 
 ---
 
@@ -140,33 +173,51 @@ Menu **Soạn hồ sơ → Thay đổi thông tin → Công ty TNHH 1 Thành vi�
 | 6 | Thay đổi chủ sở hữu | Cá nhân: rút trích CCCD. Tổ chức: rút trích GPKD của tổ chức nhận chuyển nhượng |
 | 7 | Bổ sung, cập nhật thông tin (Mục B) | Tick là tự lấy địa chỉ trụ sở, địa chỉ chủ sở hữu và người đại diện từ GPKD rồi **AI tự tra sang địa chỉ mới** (có nút "Tra địa chỉ mới cho tất cả" để tra lại, hiện địa chỉ trên GPKD để đối chiếu). Cập nhật địa chỉ trụ sở (dán thông tin/AI cập nhật địa chỉ). Cập nhật địa chỉ liên hệ của chủ sở hữu và người đại diện (tự lấy từ GPKD; cùng một người thì gộp "Là chủ sở hữu đồng thời là người đại diện pháp luật của doanh nghiệp"; tối đa 3 người) |
 | 8 | Chủ sở hữu hưởng lợi | Chọn đoạn a) (thay đổi thông tin đã kê khai) hoặc b) (doanh nghiệp thành lập trước 01/7/2025 bổ sung thông tin); Giấy đề nghị chỉ in đoạn đã chọn. Chỉ chọn "Thay đổi chủ sở hữu" thì in cả a) và b) như trước |
+| 9 | **Tạm ngừng kinh doanh** (làm riêng, không chọn cùng trường hợp khác) | Từ ngày, đến hết ngày (trống = tròn 1 năm, vd 01/10/2026 → 30/09/2027), lý do (mặc định "Kinh doanh không hiệu quả"), SĐT và email người đại diện. Web báo lỗi nếu quá 1 năm hoặc ngày kết thúc trước ngày bắt đầu |
+
+**Ô nhập thêm:** "Email nhận thông báo thuế" (trống = email công ty); "Số GCN ĐKDN", "Ngày cấp GCN", **"Cơ quan cấp GCN"** (trống = AI đọc ở góc trên bên trái GPKD; không đọc được thì GCN cấp trước 01/3/2025 ghi Sở Kế hoạch và Đầu tư, sau đó ghi Sở Tài chính); ô tích "Ghi chú theo QĐ 36/2025" ở bảng bỏ ngành.
 
 **Số điện thoại:** ô "SĐT Chủ tịch công ty / Giám đốc" và "SĐT công ty". SĐT Giám đốc ghi vào chỉ tiêu Giám đốc/Tổng giám đốc trong mục thông tin đăng ký thuế; SĐT công ty ghi vào điện thoại địa chỉ nhận thông báo thuế và điện thoại trụ sở mới (khi không nhập riêng).
 
-**Người ký:** để trống thì tự chọn. Có đổi người đại diện thì chủ sở hữu ký, các trường hợp khác người đại diện hiện tại ký.
+**Người ký:** để trống thì tự chọn. Bình thường **người đại diện theo pháp luật** ký (chức danh "NGƯỜI ĐẠI DIỆN THEO PHÁP LUẬT"). Có **đổi người đại diện** thì **chủ sở hữu** ký: ô ký của Mẫu 12, Mẫu 13, Danh sách CSH ghi **"CHỦ TỊCH CÔNG TY"**, Giấy ủy quyền ghi "Là Chủ tịch công ty của CÔNG TY …".
 
 ### Bước 3 – Tạo hồ sơ
 
-- Web báo cụ thể nếu còn thiếu thông tin.
-- **Giấy đề nghị Mẫu số 12** (tạo khi chọn trường hợp 1, 2, 3, 4, 6 hoặc 7):
-  - Trang đầu giữ nguyên như mẫu (phần A, tách/sáp nhập, ô Có/Không); số giấy đề nghị ghi `01/<chữ cái đầu tên công ty>-GĐN`, ví dụ "CÔNG TY TNHH NHỰA JUN CHENG VIỆT NAM" → `01/NJCVN-GĐN`; tên cơ quan Kính gửi in nghiêng; tên doanh nghiệp, mã số thuế, tên Giám đốc in đậm (cả Mẫu 12 và 13).
-  - Các mục thay đổi chỉ giữ mục đã chọn.
-  - Bảng ngành bổ sung/bỏ tự bỏ dòng trống, đánh lại STT, đánh dấu X ngành chính.
-  - Bảng nguồn vốn và tài sản góp vốn tự điền (vốn tư nhân, Đồng Việt Nam 100%).
-  - Giảm vốn thì có đoạn cam kết thanh toán nợ.
-  - **Thông báo thay đổi thông tin đăng ký thuế:** không có thông tin thuế nào thay đổi thì bỏ cả mục; có ít nhất một thông tin thay đổi thì giữ **nguyên bảng 9 chỉ tiêu**, trong đó tự điền:
-    - Chỉ tiêu 1 (Giám đốc): người đại diện mới khi đổi người đại diện; hoặc Giám đốc hiện tại (theo GPKD) khi Mục B cập nhật địa chỉ liên hệ của người đó.
-    - Chỉ tiêu 3 (địa chỉ nhận thông báo thuế): **đổi trụ sở → theo địa chỉ sau thay đổi (Mục A); chỉ cập nhật → theo địa chỉ cập nhật (Mục B)**.
-  - Mục B in đúng như mẫu: "1. Cập nhật địa chỉ trụ sở chính…", "2. Cập nhật địa chỉ liên hệ…".
-- **Giấy đề nghị Mẫu số 13** – thay đổi người đại diện theo pháp luật (khi chọn trường hợp 5):
-  - Định dạng theo Nghị định 30/2020.
-  - Tự điền số định danh của Chủ tịch công ty (chủ sở hữu cá nhân).
-  - Hộ chiếu thì điền khung "không có số định danh".
-- **Giấy ủy quyền nộp hồ sơ** và **Danh sách chủ sở hữu hưởng lợi** luôn có trong bộ hồ sơ thay đổi:
-  - Bên ủy quyền / người ký = người ký hồ sơ (chủ sở hữu khi đổi người đại diện, còn lại là người đại diện hiện tại), **địa chỉ theo thông tin đang đăng ký (địa chỉ cũ)**;
-  - Chủ sở hữu hưởng lợi: chọn trong mục "Chủ sở hữu hưởng lợi" – Chủ sở hữu / Người đại diện theo pháp luật / Người khác (nhập, rút trích CCCD). GPKD không ghi chủ sở hữu cá nhân thì web nhắc chọn; địa chỉ dùng địa chỉ đã cập nhật ở Mục B nếu có;
-  - Nơi ký theo tỉnh/thành mới.
-- Tải từng file, **Tải trọn bộ (.zip)**, hoặc **Tải về (.xlsx)** dạng `MailMerge_ThayDoi_<MST>_….xlsx`.
+Web báo cụ thể nếu còn thiếu thông tin. Thành phần bộ hồ sơ theo trường hợp đã chọn (`mauThayDoiTNHH1TV` trong `services/tronHoSo.ts`):
+
+| Giấy | Khi nào có |
+|---|---|
+| Giấy đề nghị **Mẫu số 12** | Luôn có khi có thay đổi (đổi người đại diện cũng có, vì đổi thông tin đăng ký thuế mục Giám đốc) |
+| Giấy đề nghị **Mẫu số 13** (đổi người đại diện) | Chọn trường hợp 5 |
+| **Quyết định của chủ sở hữu** (`01/QĐ`) | Đổi tên / địa chỉ / vốn / ngành / người đại diện |
+| **Giấy ủy quyền** (kiểu công ty) | Luôn có |
+| **Danh sách chủ sở hữu hưởng lợi** | Chọn đổi chủ sở hữu hoặc chủ sở hữu hưởng lợi |
+| **Tạm ngừng:** Thông báo tạm ngừng (`01/<ký hiệu>-TB`) + Quyết định + Giấy ủy quyền | Chọn trường hợp 9 |
+
+**Mẫu 12**
+- Số giấy đề nghị `01/<chữ cái đầu tên công ty>-GĐN`, ví dụ "CÔNG TY TNHH NHỰA JUN CHENG VIỆT NAM" → `01/NJCVN-GĐN`. Tên cơ quan Kính gửi in nghiêng; tên doanh nghiệp, mã số thuế, tên Giám đốc in đậm.
+- Các mục thay đổi chỉ giữ mục đã chọn. Bảng ngành bổ sung/bỏ tự bỏ dòng trống, đánh lại STT, đánh dấu X ngành chính.
+- Bảng bỏ ngành: cột Ghi chú tự ghi *"Ngành, nghề kinh doanh bị xóa/bị thay đổi theo Quyết định số 36/2025/QĐ-TTg"* (mã không còn trong VSIC 2025 = bị xóa, còn = bị thay đổi).
+- Bảng nguồn vốn và tài sản góp vốn tự điền; giảm vốn thì có đoạn cam kết thanh toán nợ.
+- **Thông báo thay đổi thông tin đăng ký thuế:** không có thông tin thuế nào thay đổi thì bỏ cả mục; có thì giữ **nguyên bảng 9 chỉ tiêu**:
+  - Chỉ tiêu 1 (Giám đốc): **luôn điền** — người đại diện mới khi đổi người đại diện, còn lại là người đại diện hiện tại theo GPKD.
+  - Chỉ tiêu 3 (địa chỉ nhận thông báo thuế): đổi trụ sở → địa chỉ sau thay đổi (Mục A); cập nhật trụ sở → địa chỉ cập nhật (Mục B); có Số fax.
+  - Ô nào không có dữ liệu thì để **dấu chấm**. Tổng số lao động để dấu chấm cho người làm hồ sơ tự điền.
+- **Mục B:** *"1. Cập nhật địa chỉ trụ sở chính của công ty như sau:"*; *"2. Cập nhật địa chỉ liên lạc chủ sở hữu / người đại diện theo pháp luật / chủ sở hữu và người đại diện theo pháp luật của công ty như sau:"* (theo người được cập nhật), từng người ghi *"- Ông/Bà: **HỌ TÊN**"* và *"Địa chỉ liên lạc: …"*.
+- "Có ☐ Không ☐" nằm ở dòng riêng dưới câu hỏi.
+
+**Mẫu 13** – định dạng theo Nghị định 30/2020; tự điền số định danh của Chủ tịch công ty; hộ chiếu thì điền khung "không có số định danh", ô để trống trong khung điền dấu chấm.
+
+**Quyết định của chủ sở hữu** – căn cứ Luật Doanh nghiệp, Nghị định 168/2025/NĐ-CP *được sửa đổi, bổ sung bởi Nghị định số 296/2026/NĐ-CP ngày 23/7/2026*. Điều 1 mỗi nội dung một khối, chỉ giữ khối đang chọn; từ 2 nội dung trở lên thì đánh số 1., 2. (thứ tự tên → địa chỉ → vốn → ngành → đại diện), 1 nội dung thì không đánh số:
+- Đổi địa chỉ: *"Thay đổi địa chỉ trụ sở chính công ty từ địa chỉ … sang địa chỉ …"*.
+- Đổi ngành: *"Thay đổi ngành nghề kinh doanh của công ty như sau:"* rồi Bổ sung / Bỏ (đánh số 1., 2. khi ngành là nội dung duy nhất và có cả hai).
+- Đổi người đại diện: *"Thay đổi người đại diện pháp luật là Ông/bà <cũ> – chức danh: … chuyển sang đại diện pháp luật là Ông/bà <mới> - chức danh: …"* và khối *"Thông tin về người đại diện pháp luật:"* (họ tên, ngày sinh, giới tính, số định danh, chức danh, địa chỉ liên lạc tách dòng).
+
+**Giấy ủy quyền** – Bên A theo người ký (xem *Người ký* ở trên), *"Giấy chứng nhận đăng ký doanh nghiệp số … do <Cơ quan cấp GCN> cấp ngày …"*; Bên B ghi "Số định danh cá nhân"; nơi ký theo tỉnh/thành mới.
+
+**Danh sách chủ sở hữu hưởng lợi** – chọn trong mục "Chủ sở hữu hưởng lợi": Chủ sở hữu / Người đại diện theo pháp luật / Người khác (nhập, rút trích CCCD); địa chỉ dùng địa chỉ đã cập nhật ở Mục B nếu có.
+
+Tải từng file, **Tải trọn bộ (.zip)**, hoặc **Tải về (.xlsx)** dạng `MailMerge_ThayDoi_<MST>_….xlsx`.
 
 > Mẫu số 12 không có mục khai chủ sở hữu mới; khi đổi chủ sở hữu, web hiện giữ mục "chủ sở hữu hưởng lợi". Mẫu thông báo thay đổi chủ sở hữu sẽ bổ sung khi có file mẫu.
 
@@ -209,9 +260,14 @@ Trường trong mẫu ghi dạng `{{TEN_TRUONG}}` (giữ nguyên định dạng 
 
 ---
 
-## 4d. Gộp file PDF
+## 4d. Gộp / Cắt PDF
 
-Mục **Gộp file PDF** ở thanh bên trái (chuyển từ tool `merge_word_gui.py`).
+Mục **Gộp / Cắt PDF** ở thanh bên trái, 2 thẻ (`components/CongCuPdf.tsx`, `GopFile.tsx`, `CatFile.tsx`).
+
+- Nhận **PDF, Word (.docx) và ảnh** (JPG/PNG/WebP/GIF/BMP — mỗi ảnh thành 1 trang A4).
+- **Cắt:** cây kéo giữa các trang hoặc nhập khoảng trang; đổi tên từng file; tải riêng hoặc .zip. Thẻ Gộp cũng có cây kéo để tách thành nhiều file.
+- Word → PDF: chạy trên máy thì máy chủ đổi bằng LibreOffice/Word (chuẩn nhất); trên Vercel thì **đổi ngay trên trình duyệt** (docx-preview + html2canvas, gần giống Word, chữ thành ảnh).
+
 
 - **Thêm file** (.docx, .pdf; chọn nhiều), **Thêm cả thư mục**, hoặc kéo file từ máy vào khung. Mỗi trang tự tách thành 1 thẻ có ảnh xem trước.
 - **Kéo thả** thẻ để sắp xếp thứ tự TỪNG TRANG (trên điện thoại dùng nút ‹ ›). Tick chọn rồi **Xóa trang đã chọn**, hoặc ✕ để xoá 1 trang; kính lúp / bấm đúp để xem phóng to.
@@ -280,6 +336,11 @@ Các mẫu nằm trong `public/mau/` (mở bằng Word để sửa):
 | `Mau_CSH_HuongLoi_MailMerge.docx` | Danh sách chủ sở hữu hưởng lợi |
 | `Mau_ThayDoi_MailMerge.docx` | Giấy đề nghị đăng ký thay đổi – Mẫu số 12 |
 | `Mau13_DoiDaiDien_MailMerge.docx` | Giấy đề nghị thay đổi người đại diện – Mẫu số 13 (định dạng NĐ 30) |
+| `Mau_DieuLe_DongNai_MailMerge.docx` | Điều lệ theo mẫu Phòng ĐKKD Thành phố Đồng Nai |
+| `Mau_UyQuyen_ThayDoi_MailMerge.docx` | Giấy ủy quyền kiểu công ty (hồ sơ thay đổi, tạm ngừng) |
+| `Mau_QuyetDinh_MailMerge.docx` | Quyết định của chủ sở hữu (hồ sơ thay đổi) |
+| `Mau_TamNgung_ThongBao_MailMerge.docx` | Thông báo tạm ngừng kinh doanh |
+| `Mau_TamNgung_QuyetDinh_MailMerge.docx` | Quyết định tạm ngừng kinh doanh |
 | `Mau_HKD_GDN_MailMerge.docx` | Giấy đề nghị đăng ký hộ kinh doanh |
 | `Mau_HKD_HopDongDichVu_MailMerge.docx` | Hợp đồng cung cấp dịch vụ đăng ký hộ kinh doanh |
 | `Mau_HKD_GiayGioiThieu_MailMerge.docx` | Giấy giới thiệu người nộp hồ sơ hộ kinh doanh |
@@ -296,6 +357,14 @@ Các mẫu nằm trong `public/mau/` (mở bằng Word để sửa):
 - Tên file trong file .zip được bỏ dấu để mở đúng trên Windows.
 
 > Nếu trộn bằng Mail Merge có sẵn của Word: các dòng `[[...]]` sẽ hiện ra và dòng ngành trống không tự xoá, phải xoá tay. Nên dùng web hoặc TronHoSo.
+
+### Quy tắc trình bày mẫu Word
+
+- **Ô vuông** dùng ký tự ☐/☒ (Wingdings 2) nằm trong dòng chữ, **không dùng hình vẽ nổi** (hình nổi bị lệch và mất chữ X khi mở bằng chương trình khác).
+- **Tên riêng** (tên công ty, họ tên người) điền ngoài bảng được **in đậm**.
+- **Chữ ký ở trang riêng**, kèm vài dòng chữ cuối (Mẫu 02 từ "Tôi cam kết:", Mẫu 12 từ "Trường hợp hồ sơ… hợp lệ", Quyết định từ Điều 3, Ủy quyền từ "Giấy ủy quyền này được lập…", Điều lệ từ "Bản điều lệ này gồm…"); khoảng ký tên **5 dòng**.
+- Giấy đề nghị và Quyết định: lề trang trên 993, phải 992, dưới 851, trái 1134 (twip); cột "Tên ngành" rộng.
+- Mỗi lần sửa mẫu: điền thử bằng bộ hồ sơ thật, so số trang, xem ảnh các trang, duyệt rồi mới đưa lên.
 
 ### TronHoSo.py (trộn ngoài web)
 
@@ -327,12 +396,19 @@ Hoặc nhấp đúp `TronHoSo.bat` để mở giao diện chọn file.
 
 ```
 ├── App.tsx, index.tsx, index.html, index.css
-├── vite.config.ts          # Proxy /ai-api, /gemini-api, /__ai/config; khoá mật khẩu; giấu key
+├── vite.config.ts          # (chạy trên máy) Proxy /ai-api, /gemini-api, /__ai/config; khoá mật khẩu; đọc GPKD PDF; Word→PDF
 ├── start-public.bat        # Chạy + public qua Cloudflare Tunnel
+├── day-len-github.bat      # Đẩy commit lên GitHub (Vercel tự build)
+├── api/ai.js, api/stl.js   # (Vercel) máy chủ AI giữ key; mẫu hồ sơ sau thành lập
+├── middleware.js           # (Vercel) mật khẩu theo máy, trang /__quan-tri
+├── vercel.json             # Đường dẫn và thời gian chạy hàm
+├── docs/quy-tac-ho-so-thay-doi.md  # Quy tắc bộ hồ sơ đã chốt theo hồ sơ thật
 ├── types.ts
 ├── components/
 │   ├── DocumentGenerator.tsx   # Soạn hồ sơ thành lập/thay đổi, xuất Excel, trộn Word
-│   ├── ChangeRequest.tsx       # Hồ sơ thay đổi: GPKD, 7 trường hợp, ô rút trích, AI địa chỉ
+│   ├── ChangeRequest.tsx       # Hồ sơ thay đổi: GPKD, 9 trường hợp (gồm tạm ngừng), ô rút trích, AI địa chỉ
+│   ├── HoKinhDoanhForm.tsx, SauThanhLapForm.tsx
+│   ├── CongCuPdf.tsx, GopFile.tsx, CatFile.tsx, KetQuaFile.tsx   # Gộp / Cắt PDF
 │   ├── ApiSettings.tsx         # Hộp thoại Cài đặt API
 │   ├── Sidebar.tsx, LegalChat.tsx, BrandStudio.tsx, AiWaitToast.tsx
 ├── services/
@@ -340,8 +416,11 @@ Hoặc nhấp đúp `TronHoSo.bat` để mở giao diện chọn file.
 │   ├── aiClient.ts         # Gọi Gemini/OpenAI, thử lại khi 429, chuyển model, lọc JSON
 │   ├── aiSettings.ts       # Đọc/lưu cấu hình máy chủ
 │   ├── vsic.ts             # Tìm kiếm & kiểm tra mã VSIC 2025
-│   ├── changeData.ts       # Dữ liệu hồ sơ thay đổi → cột Excel
-│   ├── tronHoSo.ts         # Bộ trộn Word trên trình duyệt
+│   ├── changeData.ts       # Dữ liệu hồ sơ thay đổi / tạm ngừng → cột trộn
+│   ├── thanhLapData.ts     # Dữ liệu hồ sơ thành lập mới → cột trộn
+│   ├── tinhThanh.ts        # 34 tỉnh/thành mới, quy đổi tên tỉnh cũ, nơi ký
+│   ├── tronHoSo.ts         # Bộ trộn Word trên trình duyệt; chọn bộ mẫu theo trường hợp
+│   ├── gopPdf.ts, pdfAnh.ts # Gộp/cắt PDF, PDF → ảnh
 │   └── soThanhChu.ts       # Đọc số tiền thành chữ
 ├── data/vsic2025.json      # Danh mục ngành VSIC 2025
 ├── public/mau/             # Mẫu Word trộn thư
@@ -362,4 +441,32 @@ Hoặc nhấp đúp `TronHoSo.bat` để mở giao diện chọn file.
 | Lỗi 502 khi gọi AI | Kiểm tra Base URL và mạng của máy chủ |
 | Mất cấu hình sau khi khởi động lại | Lưu trên **máy chủ** để ghi vào `tools\ai-config.json`; đừng xoá thư mục `tools` |
 | Chú thích chân trang lệch khi mở bằng LibreOffice | Đã xử lý trong bộ trộn; trộn lại bằng bản mới |
-| Ô vuông tick X trong mẫu (ví dụ "đồng thời thay đổi địa chỉ nhận thông báo thuế") chưa được tick | Đây là hình vẽ trong mẫu gốc, tick tay trong Word |
+| Ô vuông bị lệch, mất dấu X | Đã đổi sang ký tự ☐/☒ trong dòng chữ; trộn lại bằng bản mới |
+| Mất ngành khi hồ sơ trên 30 ngành | Mẫu chỉ có 30 dòng ngành; bổ sung tay các ngành còn lại |
+| Giấy ủy quyền ghi sai cơ quan cấp GCN | Sửa ô "Cơ quan cấp GCN" ở form thay đổi (GCN cũ do Sở Kế hoạch và Đầu tư cấp) |
+| `git` báo "File exists" (.lock) | Xoá file `.lock` thừa trong thư mục `.git` rồi chạy lại |
+
+---
+
+## 12. Nhật ký cập nhật
+
+### 05/11/2026
+- **Tạm ngừng kinh doanh** (TNHH 1TV): trường hợp 9 ở hồ sơ thay đổi; Thông báo + Quyết định + Giấy ủy quyền (theo bộ Lê Hùng).
+- **Đồng Nai** lên Thành phố (30/4/2026); **Điều lệ mẫu Đồng Nai** theo yêu cầu chuyên viên (bộ Bảo An).
+- **Mẫu 02:** "VNĐ", năm tài chính 01/01–31/12, số lao động 01, ô SĐT Giám đốc (bộ Kim Long Land).
+- **Mẫu 12:** email nhận thông báo thuế, ghi chú QĐ 36/2025 ở bảng bỏ ngành (bộ Ngọc Viễn Đông).
+- **Quyết định:** căn cứ Nghị định 296/2026/NĐ-CP. **Ủy quyền:** "Số định danh cá nhân".
+- **Trình bày:** ô vuông ☐/☒ thay hình vẽ nổi; chữ ký 5 dòng; lề trang và cột tên ngành rộng hơn.
+
+### 06/11/2026
+- **Mẫu 12:** phần thuế luôn điền Giám đốc (bộ Lemar, Toàn Gia Phú).
+- **Quyết định – Điều 1:** câu đổi địa chỉ "từ địa chỉ … sang địa chỉ …", dòng "Thay đổi ngành nghề kinh doanh…", đánh số tự động (bộ Lemar, Toàn Gia Phú).
+- **Ủy quyền:** cơ quan cấp GCN đọc từ GPKD + ô sửa tay (bộ Lemar).
+- **Chữ ký ở trang riêng** kèm vài dòng chữ cuối, mọi giấy.
+- **Đổi người đại diện:** Quyết định theo bộ Bảo Sơn Phúc (sửa lỗi ghi sai người đại diện cũ); chủ sở hữu ký với chức danh "CHỦ TỊCH CÔNG TY"; Mục B "Cập nhật địa chỉ liên lạc…", "- Ông/Bà: **TÊN**" (bộ Bảo Sơn Phúc, Y Tế Quốc Tế).
+- **Trình bày:** in đậm tên riêng; "Có ☐ Không ☐" xuống dòng riêng; ô trống phần thuế để dấu chấm, thêm Số fax.
+
+### Chưa làm
+- Hồ sơ công ty cổ phần, TNHH 2 thành viên; tạm ngừng cho các loại hình này.
+- Hồ sơ chi nhánh / văn phòng đại diện / địa điểm kinh doanh (Mẫu 19).
+- Bảng ngành trên 30 ngành.

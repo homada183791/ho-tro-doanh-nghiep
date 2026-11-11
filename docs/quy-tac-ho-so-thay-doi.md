@@ -72,3 +72,10 @@ Thứ tự file: Mẫu 12 → Mẫu 13 (nếu có) → Quyết định → Giấ
 - Giữ theo web: ký hiệu số giấy, ", Việt Nam" có hoặc không đều được; Nghị định **296**/2026/NĐ-CP (file mẫu cũ ghi 269 là sai).
 - **Trang chữ ký**: mọi giấy, chữ ký nằm ở trang riêng kèm vài dòng chữ cuối (ngắt trang trước các đoạn đó: Mẫu 02 từ "Tôi cam kết:", Mẫu 12 từ "Trường hợp hồ sơ… hợp lệ", Quyết định từ Điều 3, Ủy quyền từ "Giấy ủy quyền này được lập…", Điều lệ từ "Bản điều lệ này gồm…").
 - Bộ Hoàng Hà (công ty cổ phần) bỏ qua; web chỉ làm TNHH 1TV.
+
+## Chốt ngày 11/11/2026 — Mục B: thêm cập nhật email công ty
+- **Mục B trong Mẫu 12** nay có thêm mục "Cập nhật thư điện tử (email) của công ty" (ngoài trụ sở và địa chỉ liên hệ).
+- Thứ tự các mục trong Mục B: **1. Trụ sở → 2. Email → 3. Liên hệ** (đánh số tự động theo mục có dữ liệu).
+- Nếu chỉ cập nhật email (không có trụ sở, không có liên hệ): email được đánh số **1**.
+- Trường `cnEmail` trong `ChangeData`; merge field `CN_EMAIL` và `CN_EMAIL_STT` trong `Mau_ThayDoi_MailMerge.docx`.
+- Email-only update **không kích hoạt phần thông tin đăng ký thuế** (không có `TD_THUE`); phần thuế chỉ hiện khi có đổi địa chỉ trụ sở, đổi người đại diện, hoặc cập nhật địa chỉ liên hệ người đại diện.
